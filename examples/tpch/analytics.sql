@@ -204,11 +204,24 @@ LANGUAGE plecl AS $plecl$
                                  (aref sd j)))))
       (values pts mean sd)))
 
+  ;; Numerical Recipes LCG — ECL 23/26 `make-random-state` integer streams differ,
+  ;; and ECL 26 seed 20260907 picks the log-rev outlier then merges the two blobs.
+  (defvar *km-rng* 20260907)
+
+  (defun km-next ()
+    (setf *km-rng* (logand (+ (* 1664525 *km-rng*) 1013904223) #xFFFFFFFF)))
+
+  (defun km-random (n)
+    (mod (km-next) n))
+
+  (defun km-unit ()
+    (* (km-next) (/ 1.0d0 4294967296.0d0)))
+
   (defun kmeans-pp (pts k nfeat)
     (let* ((n (length pts))
            (k (min k n))
            (cent (make-array k))
-           (first (random n)))
+           (first (km-random n)))
       (setf (aref cent 0) (copy-seq (aref pts first)))
       (loop for c from 1 below k
             for dist = (make-array n :initial-element 0.0d0)
@@ -224,7 +237,7 @@ LANGUAGE plecl AS $plecl$
                               do (setf best (min best d)))
                         (setf (aref dist i) best)
                         (incf tot best))
-               (let ((r (* (random 1.0d0) tot))
+               (let ((r (* (km-unit) tot))
                      (acc 0.0d0)
                      (pick 0))
                  (loop for i from 0 below n
@@ -235,9 +248,16 @@ LANGUAGE plecl AS $plecl$
                  (setf (aref cent c) (copy-seq (aref pts pick)))))
       cent))
 
-  (defun kmeans (pts k n-iter nfeat)
-    (let* ((*random-state* (make-random-state 20260907))
-           (n (length pts))
+  (defun kmeans-inertia (pts assign cent nfeat)
+    (loop for i from 0 below (length pts)
+          for p = (aref pts i)
+          for j = (aref assign i)
+          sum (loop for f from 1 to nfeat
+                    for diff = (- (aref p f) (aref (aref cent j) f))
+                    sum (* diff diff))))
+
+  (defun kmeans-once (pts k n-iter nfeat)
+    (let* ((n (length pts))
            (k (max 1 (min k n)))
            (cent (kmeans-pp pts k nfeat))
            (assign (make-array n :initial-element 0)))
@@ -268,8 +288,19 @@ LANGUAGE plecl AS $plecl$
                              do (setf (aref (aref cent j) f)
                                       (/ (aref (aref sum j) f) (aref cnt j))))
                        (setf (aref cent j)
-                             (copy-seq (aref pts (random n))))))))
-      (values assign cent)))
+                             (copy-seq (aref pts (km-random n))))))))
+      (values assign cent (kmeans-inertia pts assign cent nfeat))))
+
+  (defun kmeans (pts k n-iter nfeat)
+    (let* ((*km-rng* 20260907)
+           (best-i most-positive-double-float)
+           (best-a nil)
+           (best-c nil))
+      (dotimes (_ 8)
+        (multiple-value-bind (a c i) (kmeans-once pts k n-iter nfeat)
+          (when (< i best-i)
+            (setf best-i i best-a a best-c c))))
+      (values best-a best-c)))
 
   (defun holt-winters (ys m alpha beta gamma)
     (let* ((n (length ys))
