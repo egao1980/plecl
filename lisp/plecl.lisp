@@ -74,6 +74,7 @@
   (eq x +null+))
 
 (defvar *function-cache* (make-hash-table :test 'eql))
+(defvar *user-package* (find-package '#:plecl.user))
 (defvar *runtime-directory*
   (let ((here (or *load-truename* *compile-file-truename*)))
     (and here (make-pathname :name nil :type nil :defaults here))))
@@ -87,7 +88,7 @@
              (format s "plecl: ~a" (plecl-error-message c)))))
 
 (defun read-all (string)
-  (let ((*package* (find-package '#:plecl.user))
+  (let ((*package* (or *user-package* (find-package '#:plecl.user)))
         (*read-eval* nil))
     (with-input-from-string (in string)
       (loop for form = (read in nil in)
@@ -109,7 +110,7 @@
   "Bytecodes-compile SOURCE. Native ECL COMPILE forks gcc and hangs PG."
   (when (fboundp 'ensure-bytecode-compiler)
     (ensure-bytecode-compiler))
-  (let* ((*package* (find-package '#:plecl.user))
+  (let* ((*package* *user-package*)
          (forms (read-all source))
          (lambda-form (wrap-body forms arg-names)))
     (or (ignore-errors (compile nil lambda-form))
@@ -144,8 +145,14 @@
       (values nil (princ-to-string c)))))
 
 (defun safe-call (fn args)
-  (let ((*package* (find-package '#:plecl.user)))
-    (call-escaping-debugger (lambda () (apply fn args)))))
+  (let ((*package* *user-package*))
+    (handler-case
+        (progn
+          (catch :plecl-abort
+            (return-from safe-call (values t (apply fn args))))
+          (values nil (%abort-message)))
+      (error (c)
+        (values nil (princ-to-string c))))))
 
 (defun boxed-ok (value)
   (if (sql-null-p value)

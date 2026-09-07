@@ -16,6 +16,20 @@ PG_FUNCTION_INFO_V1(plecl_validator);
 static bool		ecl_booted = false;
 static char		plecl_abort_msg[2048];
 
+static cl_object fun_dispatch = ECL_NIL;
+static cl_object fun_dispatch_set = ECL_NIL;
+static cl_object fun_dispatch_set_list = ECL_NIL;
+static cl_object fun_dispatch_trigger = ECL_NIL;
+static cl_object fun_srf_nth = ECL_NIL;
+static cl_object fun_srf_done = ECL_NIL;
+static cl_object kw_ok = ECL_NIL;
+static cl_object kw_error = ECL_NIL;
+static cl_object kw_null = ECL_NIL;
+static cl_object kw_set = ECL_NIL;
+static cl_object kw_skip = ECL_NIL;
+static cl_object kw_row = ECL_NIL;
+static cl_object obj_null = ECL_NIL;
+
 typedef struct PleclFnState
 {
 	TransactionId xmin;
@@ -53,6 +67,8 @@ plecl_keyword(const char *name)
 cl_object
 plecl_null_object(void)
 {
+	if (obj_null != ECL_NIL)
+		return obj_null;
 	return cl_symbol_value(plecl_symbol("+NULL+"));
 }
 
@@ -126,13 +142,14 @@ plecl_register_runtime(void)
 					 ECL_NIL, ECL_NIL);
 }
 
-cl_object
-plecl_apply(const char *name, cl_object args)
+static cl_object
+plecl_catch_apply(cl_object fun, cl_object args, const char *name)
 {
-	cl_object	fun = cl_fdefinition(plecl_symbol(name));
-	cl_env_ptr	env = ecl_process_env();
-	cl_object	result = ECL_NIL;
+	cl_env_ptr	env;
+	cl_object	result;
 
+	env = ecl_process_env();
+	result = ECL_NIL;
 	ECL_CATCH_ALL_BEGIN(env)
 	{
 		result = cl_apply(2, fun, args);
@@ -149,6 +166,109 @@ plecl_apply(const char *name, cl_object args)
 	}
 	ECL_CATCH_ALL_END;
 	return result;
+}
+
+static cl_object
+plecl_catch_funcall5(cl_object fun, cl_object a, cl_object b, cl_object c,
+					 cl_object d, cl_object e, const char *name)
+{
+	cl_env_ptr	env;
+	cl_object	result;
+
+	env = ecl_process_env();
+	result = ECL_NIL;
+	ECL_CATCH_ALL_BEGIN(env)
+	{
+		result = cl_funcall(6, fun, a, b, c, d, e);
+	}
+	ECL_CATCH_ALL_IF_CAUGHT
+	{
+		if (plecl_abort_msg[0])
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					 errmsg("plecl: %s", plecl_abort_msg)));
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				 errmsg("plecl: uncaught non-local exit in %s", name)));
+	}
+	ECL_CATCH_ALL_END;
+	return result;
+}
+
+static cl_object
+plecl_catch_funcall2(cl_object fun, cl_object a, cl_object b, const char *name)
+{
+	cl_env_ptr	env;
+	cl_object	result;
+
+	env = ecl_process_env();
+	result = ECL_NIL;
+	ECL_CATCH_ALL_BEGIN(env)
+	{
+		result = cl_funcall(3, fun, a, b);
+	}
+	ECL_CATCH_ALL_IF_CAUGHT
+	{
+		if (plecl_abort_msg[0])
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					 errmsg("plecl: %s", plecl_abort_msg)));
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				 errmsg("plecl: uncaught non-local exit in %s", name)));
+	}
+	ECL_CATCH_ALL_END;
+	return result;
+}
+
+static cl_object
+plecl_catch_funcall1(cl_object fun, cl_object a, const char *name)
+{
+	cl_env_ptr	env;
+	cl_object	result;
+
+	env = ecl_process_env();
+	result = ECL_NIL;
+	ECL_CATCH_ALL_BEGIN(env)
+	{
+		result = cl_funcall(2, fun, a);
+	}
+	ECL_CATCH_ALL_IF_CAUGHT
+	{
+		if (plecl_abort_msg[0])
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					 errmsg("plecl: %s", plecl_abort_msg)));
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				 errmsg("plecl: uncaught non-local exit in %s", name)));
+	}
+	ECL_CATCH_ALL_END;
+	return result;
+}
+
+static void
+plecl_cache_runtime_symbols(void)
+{
+	fun_dispatch = cl_fdefinition(plecl_symbol("DISPATCH"));
+	fun_dispatch_set = cl_fdefinition(plecl_symbol("DISPATCH-SET"));
+	fun_dispatch_set_list = cl_fdefinition(plecl_symbol("DISPATCH-SET-LIST"));
+	fun_dispatch_trigger = cl_fdefinition(plecl_symbol("DISPATCH-TRIGGER"));
+	fun_srf_nth = cl_fdefinition(plecl_symbol("SRF-NTH"));
+	fun_srf_done = cl_fdefinition(plecl_symbol("SRF-DONE"));
+	kw_ok = ecl_make_keyword("OK");
+	kw_error = ecl_make_keyword("ERROR");
+	kw_null = ecl_make_keyword("NULL");
+	kw_set = ecl_make_keyword("SET");
+	kw_skip = ecl_make_keyword("SKIP");
+	kw_row = ecl_make_keyword("ROW");
+	obj_null = cl_symbol_value(plecl_symbol("+NULL+"));
+}
+
+cl_object
+plecl_apply(const char *name, cl_object args)
+{
+	return plecl_catch_apply(cl_fdefinition(plecl_symbol(name)), args, name);
 }
 
 cl_object
@@ -199,6 +319,7 @@ boot_ecl(void)
 						   (cl_objectfn_fixed) plecl_c_ereport, 1);
 		plecl_register_spi();
 		(void) plecl_apply("BOOT", ECL_NIL);
+		plecl_cache_runtime_symbols();
 	}
 	ECL_CATCH_ALL_IF_CAUGHT
 	{
@@ -300,12 +421,6 @@ arg_values_list(FunctionCallInfo fcinfo, Form_pg_proc proc)
 }
 
 static cl_object
-keyword_eq(cl_object obj, const char *name)
-{
-	return (obj == ecl_make_keyword(name)) ? ECL_T : ECL_NIL;
-}
-
-static cl_object
 unwrap_status(cl_object boxed, cl_object *payload)
 {
 	cl_object	tag;
@@ -316,7 +431,7 @@ unwrap_status(cl_object boxed, cl_object *payload)
 				 errmsg("plecl: dispatch returned a non-cons")));
 	tag = ECL_CONS_CAR(boxed);
 	*payload = ECL_CONS_CDR(boxed);
-	if (keyword_eq(tag, "ERROR") == ECL_T)
+	if (tag == kw_error)
 	{
 		char	   *msg = plecl_cstring_palloc(*payload);
 
@@ -413,12 +528,12 @@ handle_trigger(FunctionCallInfo fcinfo, HeapTuple protup, Form_pg_proc proc,
 				   ECL_NIL,
 				   ECL_NIL,
 				   trigger_plist(fcinfo));
-	boxed = plecl_apply("DISPATCH-TRIGGER", args);
+	boxed = plecl_catch_apply(fun_dispatch_trigger, args, "DISPATCH-TRIGGER");
 	tag = unwrap_status(boxed, &payload);
 
-	if (keyword_eq(tag, "SKIP") == ECL_T)
+	if (tag == kw_skip)
 		return PointerGetDatum(NULL);
-	if (keyword_eq(tag, "OK") == ECL_T)
+	if (tag == kw_ok)
 	{
 		if (TRIGGER_FIRED_BY_DELETE(td->tg_event))
 			return PointerGetDatum(td->tg_trigtuple);
@@ -426,7 +541,7 @@ handle_trigger(FunctionCallInfo fcinfo, HeapTuple protup, Form_pg_proc proc,
 			return PointerGetDatum(td->tg_newtuple);
 		return PointerGetDatum(td->tg_trigtuple);
 	}
-	if (keyword_eq(tag, "ROW") == ECL_T)
+	if (tag == kw_row)
 		return PointerGetDatum(plecl_object_to_tuple(payload, tupdesc));
 
 	ereport(ERROR,
@@ -475,7 +590,7 @@ static Datum
 handle_srf_materialize(FunctionCallInfo fcinfo, Form_pg_proc proc, cl_object source,
 					   TransactionId xmin, cl_object argnames, cl_object argvals)
 {
-	ReturnSetInfo *rsi = (ReturnSetInfo *) fcinfo->resultinfo;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	MemoryContext old;
 	Tuplestorestate *store;
 	TupleDesc	desc;
@@ -484,26 +599,26 @@ handle_srf_materialize(FunctionCallInfo fcinfo, Form_pg_proc proc, cl_object sou
 	cl_object	payload;
 	cl_object	c;
 
-	rsi->returnMode = SFRM_Materialize;
-	old = MemoryContextSwitchTo(rsi->econtext->ecxt_per_query_memory);
-	desc = CreateTupleDescCopy(rsi->expectedDesc);
+	rsinfo->returnMode = SFRM_Materialize;
+	old = MemoryContextSwitchTo(rsinfo->econtext->ecxt_per_query_memory);
+	desc = CreateTupleDescCopy(rsinfo->expectedDesc);
 	store = tuplestore_begin_heap(true, false, work_mem);
-	rsi->setResult = store;
-	rsi->setDesc = desc;
-	boxed = plecl_apply("DISPATCH-SET-LIST",
-						cl_list(5,
-								ecl_make_uint32_t(fcinfo->flinfo->fn_oid),
-								ecl_make_uint32_t(xmin),
-								source,
-								argnames,
-								argvals));
+	rsinfo->setResult = store;
+	rsinfo->setDesc = desc;
+	boxed = plecl_catch_funcall5(fun_dispatch_set_list,
+								 ecl_make_uint32_t(fcinfo->flinfo->fn_oid),
+								 ecl_make_uint32_t(xmin),
+								 source,
+								 argnames,
+								 argvals,
+								 "DISPATCH-SET-LIST");
 	tag = unwrap_status(boxed, &payload);
-	if (keyword_eq(tag, "OK") == ECL_T)
+	if (tag == kw_ok)
 	{
 		for (c = payload; ECL_CONSP(c); c = ECL_CONS_CDR(c))
 			srf_store_value(store, desc, proc->prorettype, ECL_CONS_CAR(c));
 	}
-	else if (keyword_eq(tag, "NULL") != ECL_T)
+	else if (tag != kw_null)
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 				 errmsg("plecl: set-returning function must return a list")));
@@ -515,7 +630,7 @@ static Datum
 handle_srf(FunctionCallInfo fcinfo, Form_pg_proc proc, cl_object source,
 		   TransactionId xmin, cl_object argnames, cl_object argvals)
 {
-	ReturnSetInfo *rsi = (ReturnSetInfo *) fcinfo->resultinfo;
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
 	FuncCallContext *funcctx;
 	uint32		key;
 	cl_object	boxed;
@@ -523,7 +638,7 @@ handle_srf(FunctionCallInfo fcinfo, Form_pg_proc proc, cl_object source,
 	cl_object	payload;
 	bool		isnull;
 
-	if (rsi && (rsi->allowedModes & SFRM_Materialize))
+	if (rsinfo && (rsinfo->allowedModes & SFRM_Materialize))
 		return handle_srf_materialize(fcinfo, proc, source, xmin, argnames, argvals);
 
 	if (SRF_IS_FIRSTCALL())
@@ -534,15 +649,15 @@ handle_srf(FunctionCallInfo fcinfo, Form_pg_proc proc, cl_object source,
 
 		funcctx = SRF_FIRSTCALL_INIT();
 		old = MemoryContextSwitchTo(funcctx->multi_call_memory_ctx);
-		boxed = plecl_apply("DISPATCH-SET",
-							cl_list(5,
-									ecl_make_uint32_t(fcinfo->flinfo->fn_oid),
-									ecl_make_uint32_t(xmin),
-									source,
-									argnames,
-									argvals));
+		boxed = plecl_catch_funcall5(fun_dispatch_set,
+									 ecl_make_uint32_t(fcinfo->flinfo->fn_oid),
+									 ecl_make_uint32_t(xmin),
+									 source,
+									 argnames,
+									 argvals,
+									 "DISPATCH-SET");
 		tag = unwrap_status(boxed, &payload);
-		if (keyword_eq(tag, "SET") != ECL_T || !ECL_CONSP(payload))
+		if (tag != kw_set || !ECL_CONSP(payload))
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 					 errmsg("plecl: set-returning function must return a list")));
@@ -557,15 +672,16 @@ handle_srf(FunctionCallInfo fcinfo, Form_pg_proc proc, cl_object source,
 	key = (uint32) (intptr_t) funcctx->user_fctx;
 	if (funcctx->call_cntr >= funcctx->max_calls)
 	{
-		(void) plecl_funcall1("SRF-DONE", ecl_make_uint32_t(key));
+		(void) plecl_catch_funcall1(fun_srf_done, ecl_make_uint32_t(key), "SRF-DONE");
 		SRF_RETURN_DONE(funcctx);
 	}
 
-	boxed = plecl_funcall2("SRF-NTH",
-						   ecl_make_uint32_t(key),
-						   ecl_make_uint32_t((uint32) funcctx->call_cntr));
+	boxed = plecl_catch_funcall2(fun_srf_nth,
+								 ecl_make_uint32_t(key),
+								 ecl_make_uint32_t((uint32) funcctx->call_cntr),
+								 "SRF-NTH");
 	tag = unwrap_status(boxed, &payload);
-	if (keyword_eq(tag, "NULL") == ECL_T)
+	if (tag == kw_null)
 	{
 		fcinfo->isnull = true;
 		SRF_RETURN_NEXT(funcctx, (Datum) 0);
@@ -592,20 +708,20 @@ handle_ordinary(FunctionCallInfo fcinfo, Form_pg_proc proc, cl_object source,
 	bool		isnull;
 	Datum		d;
 
-	boxed = plecl_apply("DISPATCH",
-						cl_list(5,
-								ecl_make_uint32_t(fcinfo->flinfo->fn_oid),
-								ecl_make_uint32_t(xmin),
-								source,
-								argnames,
-								argvals));
+	boxed = plecl_catch_funcall5(fun_dispatch,
+								 ecl_make_uint32_t(fcinfo->flinfo->fn_oid),
+								 ecl_make_uint32_t(xmin),
+								 source,
+								 argnames,
+								 argvals,
+								 "DISPATCH");
 	tag = unwrap_status(boxed, &payload);
-	if (keyword_eq(tag, "NULL") == ECL_T)
+	if (tag == kw_null)
 	{
 		fcinfo->isnull = true;
 		return (Datum) 0;
 	}
-	if (keyword_eq(tag, "OK") != ECL_T)
+	if (tag != kw_ok)
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 				 errmsg("plecl: unexpected dispatch tag")));
