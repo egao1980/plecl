@@ -29,6 +29,8 @@ plecl_cstring_palloc(cl_object obj)
 {
 	char	   *buf;
 	cl_index	n;
+	cl_index	i;
+	cl_index	o = 0;
 
 	if (plecl_sql_null_p(obj))
 		return NULL;
@@ -36,12 +38,36 @@ plecl_cstring_palloc(cl_object obj)
 		return pstrdup("");
 	if (!ECL_STRINGP(obj))
 		obj = cl_princ_to_string(obj);
-	if (!ECL_BASE_STRING_P(obj))
-		obj = cl_princ_to_string(obj);
-	n = obj->base_string.fillp;
-	buf = palloc(n + 1);
-	memcpy(buf, obj->base_string.self, n);
-	buf[n] = '\0';
+
+	/* ECL often keeps t_string (UTF-32). memcpy of fillp bytes yields one Latin char. */
+	n = ecl_length(obj);
+	buf = palloc(n * 4 + 1);
+	for (i = 0; i < n; i++)
+	{
+		ecl_character	c = ecl_char(obj, i);
+
+		if (c < 0x80)
+			buf[o++] = (char) c;
+		else if (c < 0x800)
+		{
+			buf[o++] = (char) (0xC0 | (c >> 6));
+			buf[o++] = (char) (0x80 | (c & 0x3F));
+		}
+		else if (c < 0x10000)
+		{
+			buf[o++] = (char) (0xE0 | (c >> 12));
+			buf[o++] = (char) (0x80 | ((c >> 6) & 0x3F));
+			buf[o++] = (char) (0x80 | (c & 0x3F));
+		}
+		else
+		{
+			buf[o++] = (char) (0xF0 | (c >> 18));
+			buf[o++] = (char) (0x80 | ((c >> 12) & 0x3F));
+			buf[o++] = (char) (0x80 | ((c >> 6) & 0x3F));
+			buf[o++] = (char) (0x80 | (c & 0x3F));
+		}
+	}
+	buf[o] = '\0';
 	return buf;
 }
 
