@@ -34,6 +34,8 @@ BEGIN
   PERFORM err_spi();
   RAISE EXCEPTION 'SPI error should have failed';
 EXCEPTION
+  WHEN undefined_column THEN
+    NULL; -- SPI surfaces the real SQLSTATE
   WHEN external_routine_exception THEN
     NULL;
 END$$;
