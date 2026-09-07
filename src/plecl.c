@@ -49,11 +49,48 @@ plecl_c_ereport(cl_object message)
 	return ECL_NIL;
 }
 
+cl_object
+plecl_c_debugger(cl_object condition, cl_object hook)
+{
+	cl_env_ptr	env = ecl_process_env();
+	cl_object	msg;
+	char	   *s;
+
+	(void) hook;
+	/* Drop hooks first so princ/ereport cannot re-enter the REPL. */
+	ecl_setq(env, ecl_make_symbol("*DEBUGGER-HOOK*", "COMMON-LISP"), ECL_NIL);
+	msg = cl_princ_to_string(condition);
+	s = plecl_cstring_palloc(msg);
+	ereport(ERROR,
+			(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+			 errmsg("plecl: %s", (s && s[0]) ? s : "error")));
+	return ECL_NIL;
+}
+
 void
 plecl_register_runtime(void)
 {
-	ecl_def_c_function(ecl_make_symbol("%EREPORT", PLECL_PACKAGE),
+	cl_object	dbg;
+
+	/*
+	 * CL-USER exists after cl_boot. PLECL does not exist until plecl.lisp
+	 * is loaded — intern-in-PLECL here used to drop ECL into the REPL.
+	 */
+	ecl_def_c_function(ecl_make_symbol("%PLECL-EREPORT", "CL-USER"),
 					   (cl_objectfn_fixed) plecl_c_ereport, 1);
+	ecl_def_c_function(ecl_make_symbol("%PLECL-DEBUGGER", "CL-USER"),
+					   (cl_objectfn_fixed) plecl_c_debugger, 2);
+	dbg = cl_fdefinition(ecl_make_symbol("%PLECL-DEBUGGER", "CL-USER"));
+	ecl_setq(ecl_process_env(),
+			 ecl_make_symbol("*DEBUGGER-HOOK*", "COMMON-LISP"),
+			 dbg);
+	cl_safe_eval(c_string_to_object(
+						 "(let ((s (find-symbol \"*INVOKE-DEBUGGER-HOOK*\" \"EXT\"))"
+						 "      (d (symbol-function (intern \"%PLECL-DEBUGGER\" \"CL-USER\"))))"
+						 "  (when s (set s d))"
+						 "  (let ((b (find-symbol \"*BREAK-ENABLE*\" \"SI\")))"
+						 "    (when (and b (boundp b)) (set b nil))))"),
+					 ECL_NIL, ECL_NIL);
 }
 
 cl_object
@@ -121,6 +158,8 @@ boot_ecl(void)
 		snprintf(lisp_path, sizeof(lisp_path), "%s/plecl.lisp", pkglib_path);
 		path = plecl_string(lisp_path, strlen(lisp_path));
 		cl_load(1, path);
+		ecl_def_c_function(ecl_make_symbol("%EREPORT", PLECL_PACKAGE),
+						   (cl_objectfn_fixed) plecl_c_ereport, 1);
 		plecl_register_spi();
 		(void) plecl_apply("BOOT", ECL_NIL);
 	}

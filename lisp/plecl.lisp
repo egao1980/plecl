@@ -47,40 +47,23 @@
 
 (in-package #:plecl)
 
-(defun %clear-debugger-hooks ()
-  (setq *debugger-hook* nil)
-  (let ((invoke (find-symbol "*INVOKE-DEBUGGER-HOOK*" "EXT"))
-        (break-enable (find-symbol "*BREAK-ENABLE*" "SI")))
-    (when invoke
-      (set invoke nil))
-    (when (and break-enable (boundp break-enable))
-      (set break-enable nil))))
-
-(defun %ereport-message (message)
-  "C PLECL:%EREPORT → ereport(ERROR). Never returns in the backend."
-  (let ((fn (find-symbol "%EREPORT" "PLECL")))
-    (unless (and fn (fboundp fn))
-      (error "plecl: %EREPORT is not registered"))
-    (funcall fn (if (stringp message) message (princ-to-string message)))))
-
-(defun %pg-debugger (condition hook)
-  "Unhandled Lisp condition → PostgreSQL ERROR (no ECL REPL)."
-  (declare (ignore hook))
-  (%clear-debugger-hooks)
-  (%ereport-message
-   (with-output-to-string (s)
-     (format s "plecl: ~a" condition))))
+(defun %cl-user-symbol (name)
+  (let ((pkg (or (find-package "CL-USER") (find-package "COMMON-LISP-USER"))))
+    (and pkg (find-symbol name pkg))))
 
 (defun install-debugger-hooks ()
-  (%clear-debugger-hooks)
-  (setq *debugger-hook* #'%pg-debugger)
-  (let ((invoke (find-symbol "*INVOKE-DEBUGGER-HOOK*" "EXT"))
-        (break-enable (find-symbol "*BREAK-ENABLE*" "SI")))
-    (when invoke
-      (set invoke #'%pg-debugger))
-    (when (and break-enable (boundp break-enable))
-      (set break-enable nil)))
-  t)
+  "Bind *debugger-hook* to the C ereport trampoline (CL-USER:%PLECL-DEBUGGER)."
+  (let ((dbg (%cl-user-symbol "%PLECL-DEBUGGER")))
+    (unless (and dbg (fboundp dbg))
+      (return-from install-debugger-hooks nil))
+    (setq *debugger-hook* (symbol-function dbg))
+    (let ((invoke (find-symbol "*INVOKE-DEBUGGER-HOOK*" "EXT"))
+          (break-enable (find-symbol "*BREAK-ENABLE*" "SI")))
+      (when invoke
+        (set invoke (symbol-function dbg)))
+      (when (and break-enable (boundp break-enable))
+        (set break-enable nil)))
+    t))
 
 (install-debugger-hooks)
 
