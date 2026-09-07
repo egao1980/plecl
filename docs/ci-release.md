@@ -1,6 +1,6 @@
 # CI and release
 
-Workflows live in `.github/workflows/` of **this** tree (canonical `egao1980/plecl`). While the code still rides in `cl-workspace`, the same jobs are mirrored at the workspace root as `plecl-test.yml` / `plecl-release.yml` (`paths: plecl/**`). Canned Lisp CI is `egao1980/cl-repository` — no copied `ci-*.lisp`.
+Owning repo: [`egao1980/plecl`](https://github.com/egao1980/plecl). Workflows are `.github/workflows/` in **this** tree. Canned Lisp CI is `egao1980/cl-repository` — no copied `ci-*.lisp`. Workspace checkout is a sibling via `repos.manifest` (`./scripts/bootstrap.sh`).
 
 ## Test (`test.yml`)
 

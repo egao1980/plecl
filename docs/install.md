@@ -15,7 +15,7 @@ PostgreSQL **16** (same major as the artifact; rebuild for 17/18 — `PG_MODULE_
 
 Windows: two CRTs. A MinGW `plecl.dll` will not load into EDB `postgres.exe`. ECL 26+ dropped MSVC — the official-Windows build is **ECL 24.5.10**.
 
-GitHub Release: `https://github.com/egao1980/plecl/releases` (while this lives in `cl-workspace`, artifacts are on that repo’s `plecl-test` / `plecl-release` workflow).
+GitHub Release: https://github.com/egao1980/plecl/releases
 
 ---
 
