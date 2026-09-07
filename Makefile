@@ -32,11 +32,13 @@ SHLIB_LINK += $(ECL_LIBS)
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
-# PGDG Makefile.global overwrites with_llvm=yes; clang-N is not a runtime dep.
-override COMPILE.c.bc = true
-override COMPILE.cxx.bc = true
-install-bitcode:
-	@true
+# PGDG Makefile.global overwrites with_llvm=yes; clang-N / llvm-lto are not
+# runtime deps. install copies .bc via $(call install_llvm_module), not a
+# separate install-bitcode target.
+override COMPILE.c.bc = touch
+override COMPILE.cxx.bc = touch
+override define install_llvm_module
+endef
 
 override PG_CFLAGS += -Wno-declaration-after-statement
 

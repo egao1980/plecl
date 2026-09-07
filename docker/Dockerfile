@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /src
 COPY . /src
-RUN make && make install
+RUN make with_llvm=no && make with_llvm=no install
 
 COPY docker/run-tests.sh /run-tests.sh
 RUN chmod +x /run-tests.sh

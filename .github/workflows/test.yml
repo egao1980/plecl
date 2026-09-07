@@ -55,11 +55,12 @@ jobs:
             echo "ECL $(ecl-config --cflags) $(ecl-config --libs)"
           fi
           pg_config --version
-          make
+          # command-line beats PGDG Makefile.global's with_llvm=yes
+          make with_llvm=no
           if [[ "$(uname -s)" == Linux ]]; then
-            sudo make install
+            sudo make with_llvm=no install
           else
-            make install
+            make with_llvm=no install
           fi
 
       - name: SQL suite

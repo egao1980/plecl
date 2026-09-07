@@ -86,8 +86,8 @@ Optional: set a machine env `ECLDIR=C:\Program Files\PostgreSQL\16\lib\` (traili
 ```bash
 sudo apt-get install -y build-essential ecl libgc-dev libgmp-dev \
   postgresql-16 postgresql-server-dev-16
-make
-sudo make install
+make with_llvm=no
+sudo make with_llvm=no install
 sudo -u postgres psql -c 'CREATE EXTENSION plecl'
 ```
 

@@ -59,11 +59,11 @@ jobs:
           VERSION: ${{ env.VERSION }}
         run: |
           set -euo pipefail
-          make
+          make with_llvm=no
           if [[ "$(uname -s)" == Linux ]]; then
-            sudo make install
+            sudo make with_llvm=no install
           else
-            make install
+            make with_llvm=no install
           fi
           ./scripts/run-sql-tests.sh
           ./scripts/pack-release.sh "${{ matrix.pack }}"
