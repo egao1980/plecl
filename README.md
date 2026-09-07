@@ -49,7 +49,7 @@ SPI `$n` placeholders. Lisp `NIL` as a bind arg is boolean false; use `+null+` f
 
 `DO LANGUAGE plecl $$ … $$` evals forms in `PLECL.USER`.
 
-Bodies are **interpreted** and cached by `(oid . xmin)` — ECL `COMPILE` shells out to gcc and hangs the backend. `CREATE OR REPLACE` invalidates.
+Bodies are **bytecode-compiled** and cached by `(oid . xmin)` — native ECL `COMPILE` shells out to gcc and hangs the backend. `CREATE OR REPLACE` invalidates.
 
 ## Demo: window aggregate from SQL
 
@@ -63,6 +63,18 @@ LANGUAGE plecl AS $plecl$
 $plecl$;
 
 SELECT * FROM demo_sales_window(1) ORDER BY store, day;
+```
+
+## Demo: TPC-H algorithms that justify Lisp
+
+`examples/tpch/` — weighted interval scheduling, binary segmentation, k-means++, Holt–Winters, Viterbi. SQL `GROUP BY`s; Lisp runs the DP/EM. Synth `TPCH_ROWS=6000000` ≈ SF1 / 1GB; `TPCH_SCALE=1` if you have duckdb.
+
+```sql
+SELECT * FROM tpch_interval_schedule(1, 0, 100000) WHERE taken;
+SELECT * FROM tpch_changepoints(1, 8, 80);
+SELECT * FROM tpch_supplier_kmeans(4, 15);
+SELECT * FROM tpch_holt_winters(1, 4, 8);
+SELECT * FROM tpch_late_viterbi(1);
 ```
 
 ## Inspector (schema `lisp`)
