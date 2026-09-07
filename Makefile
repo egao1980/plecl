@@ -1,0 +1,31 @@
+EXTENSION = plecl
+MODULE_big = plecl
+OBJS = src/plecl.o src/convert.o src/spi.o
+DATA = sql/plecl--0.1.0.sql
+PGFILEDESC = "plecl - Common Lisp (ECL) procedural language"
+
+PG_CONFIG ?= pg_config
+# Ubuntu PGXS also builds LLVM bitcode; ECL headers trip -Werror there.
+with_llvm = no
+PGXS := $(shell $(PG_CONFIG) --pgxs)
+include $(PGXS)
+
+override PG_CFLAGS += -Wno-declaration-after-statement
+
+ECL_CONFIG ?= ecl-config
+ECL_CFLAGS ?= $(shell command -v $(ECL_CONFIG) >/dev/null && $(ECL_CONFIG) --cflags)
+ECL_LIBS ?= $(shell command -v $(ECL_CONFIG) >/dev/null && $(ECL_CONFIG) --libs)
+ifeq ($(ECL_CFLAGS),)
+  ECL_CFLAGS :=
+  ECL_LIBS := -lecl -lgc -lgmp -lm -lpthread
+endif
+override PG_CPPFLAGS += $(ECL_CFLAGS) -I$(srcdir)/src
+override SHLIB_LINK += $(ECL_LIBS)
+
+.PHONY: install-lisp
+install: install-lisp
+
+install-lisp:
+	$(MKDIR_P) '$(DESTDIR)$(pkglibdir)'
+	$(INSTALL_DATA) $(srcdir)/lisp/plecl.lisp '$(DESTDIR)$(pkglibdir)/plecl.lisp'
+	$(INSTALL_DATA) $(srcdir)/lisp/inspect.lisp '$(DESTDIR)$(pkglibdir)/inspect.lisp'

@@ -1,0 +1,19 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lisp:
+    uses: egao1980/cl-repository/.github/workflows/test-system.yml@main
+
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build and test extension
+        run: docker build -f docker/Dockerfile -t plecl-test . && docker run --rm plecl-test

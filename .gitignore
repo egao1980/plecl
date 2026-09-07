@@ -1,0 +1,9 @@
+*.o
+*.so
+*.fasl
+*.lib
+*.fas
+*.data
+*.dSYM/
+.DS_Store
+/results/

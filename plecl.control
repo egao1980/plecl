@@ -1,0 +1,5 @@
+comment = 'Common Lisp (ECL) procedural language'
+default_version = '0.1.0'
+module_pathname = '$libdir/plecl'
+relocatable = false
+superuser = true
