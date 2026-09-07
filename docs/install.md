@@ -1,18 +1,101 @@
 # Install
 
-PostgreSQL 16+ (server + headers) and ECL. Superuser-only language.
+`LANGUAGE plecl` is untrusted and `superuser = true`. The backend process loads a full ECL image (FFI, files, `ext:system`).
 
-| | Ubuntu 24.04 | macOS | Windows MinGW | Windows MSVC |
-|---|---|---|---|---|
-| compiler | gcc | clang (Xcode) | MinGW64 (MSYS2) | **Visual Studio** (`cl`, `/MD`) |
-| ECL | `apt install ecl` | `brew install ecl` | `mingw-w64-x86_64-ecl` | **24.5.10 from source** (`scripts/build-ecl-msvc.bat`) |
-| PostgreSQL | `postgresql-server-dev-16` | `brew install postgresql@16` | `mingw-w64-x86_64-postgresql` | **EDB / official zip** |
-| shared object | `plecl.so` | `plecl.so` | `plecl.dll` | `plecl.dll` + `ecl.dll` |
-| loads into | apt / EDB cluster | Homebrew keg | **MSYS2 Postgres only** | **EDB / official installer** |
+PostgreSQL **16** (same major as the artifact; rebuild for 17/18 — `PG_MODULE_MAGIC` is per-major). Superuser session to `CREATE EXTENSION`.
 
-Two Windows ABIs. Do not load a MinGW `plecl.dll` into EDB `postgres.exe` (or the reverse). ECL 26+ dropped the MSVC port — the official-Windows build pins **24.5.10**.
+## Which binary
 
-## Ubuntu
+| artifact | compiler | loads into | needs at runtime |
+|---|---|---|---|
+| `plecl-$V-linux-x86_64.tar.gz` | gcc | apt / PGDG / EDB Linux | `libecl` from the distro |
+| `plecl-$V-macos-arm64.tar.gz` | clang | Homebrew `postgresql@16` | `brew install ecl` |
+| `plecl-$V-windows-x86_64.zip` | MinGW64 | **MSYS2 Postgres only** | `mingw-w64-x86_64-ecl` on `PATH` |
+| `plecl-$V-windows-x86_64-msvc.zip` | VS `/MD` | **EDB / official Windows installer** | shipped `ecl.dll` + `encodings/` |
+
+Windows: two CRTs. A MinGW `plecl.dll` will not load into EDB `postgres.exe`. ECL 26+ dropped MSVC — the official-Windows build is **ECL 24.5.10**.
+
+GitHub Release: `https://github.com/egao1980/plecl/releases` (while this lives in `cl-workspace`, artifacts are on that repo’s `plecl-test` / `plecl-release` workflow).
+
+---
+
+## From a release (no compiler)
+
+### Linux
+
+```bash
+# libecl.so.X must already be on the loader path (apt: ecl)
+tar -C /tmp -xzf plecl-0.1.0-linux-x86_64.tar.gz
+sudo cp /tmp/plecl-0.1.0-linux-x86_64/lib/* "$(pg_config --pkglibdir)/"
+sudo cp /tmp/plecl-0.1.0-linux-x86_64/share/extension/* "$(pg_config --sharedir)/extension/"
+sudo -u postgres psql -c 'CREATE EXTENSION plecl'
+```
+
+`pg_config` must be the cluster you run, not a different major.
+
+### macOS (Homebrew postgresql@16)
+
+```bash
+brew install ecl postgresql@16
+export PATH="$(brew --prefix postgresql@16)/bin:$PATH"
+tar -C /tmp -xzf plecl-0.1.0-macos-arm64.tar.gz
+cp /tmp/plecl-0.1.0-macos-arm64/lib/* "$(pg_config --pkglibdir)/"
+cp /tmp/plecl-0.1.0-macos-arm64/share/extension/* "$(pg_config --sharedir)/extension/"
+psql -d postgres -c 'CREATE EXTENSION plecl'
+```
+
+### Windows — official / EDB (MSVC zip)
+
+Admin PowerShell. Adjust `16` if the install is another major you built for.
+
+```powershell
+$root = "C:\Program Files\PostgreSQL\16"
+$src  = "C:\path\to\plecl-0.1.0-windows-x86_64-msvc"
+# zip expands to that directory (lib\ + share\extension\)
+
+Copy-Item -Force "$src\lib\plecl.dll"        "$root\lib\"
+Copy-Item -Force "$src\lib\ecl.dll"          "$root\lib\"
+Copy-Item -Force "$src\lib\ecl.dll"          "$root\bin\"   # postgres.exe searches bindir
+Copy-Item -Force "$src\lib\*.lisp"           "$root\lib\"
+if (Test-Path "$src\lib\help.doc") {
+  Copy-Item -Force "$src\lib\help.doc"       "$root\lib\"
+}
+if (Test-Path "$src\lib\encodings") {
+  Copy-Item -Recurse -Force "$src\lib\encodings" "$root\lib\encodings"
+}
+Copy-Item -Force "$src\share\extension\*"    "$root\share\extension\"
+
+Restart-Service postgresql-x64-16   # Services.msc name may be "postgresql-x64-16"
+```
+
+Then as a superuser (`postgres` + the password from the EDB installer):
+
+```bat
+"C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -c "CREATE EXTENSION plecl"
+```
+
+`ecl.dll` **must** sit next to `postgres.exe` (`bindir`). Putting it only in `lib\` is not enough — Windows does not search the loading DLL’s directory. `_PG_init` sets `ECLDIR` to `pkglibdir` when unset so `encodings\` resolves.
+
+Optional: set a machine env `ECLDIR=C:\Program Files\PostgreSQL\16\lib\` (trailing slash) if you move those files.
+
+### Windows — MSYS2 MinGW (MinGW zip)
+
+MINGW64 shell. Postgres **and** ECL must be the MinGW packages.
+
+```bash
+pacman -S --needed mingw-w64-x86_64-ecl mingw-w64-x86_64-postgresql
+# unzip so lib/ and share/extension/ are visible
+cp plecl-0.1.0-windows-x86_64/lib/* "$(pg_config --pkglibdir)/"
+cp plecl-0.1.0-windows-x86_64/share/extension/* "$(pg_config --sharedir)/extension/"
+# /mingw64/bin (ecl.dll / libecl-*.dll) must be on PATH for the postgres process
+psql -c 'CREATE EXTENSION plecl'
+```
+
+---
+
+## From source
+
+### Ubuntu 24.04
 
 ```bash
 sudo apt-get install -y build-essential ecl libgc-dev libgmp-dev \
@@ -22,75 +105,119 @@ sudo make install
 sudo -u postgres psql -c 'CREATE EXTENSION plecl'
 ```
 
-Docker (hermetic SQL suite):
+Hermetic SQL suite:
 
 ```bash
 docker build -f docker/Dockerfile -t plecl-test .
 docker run --rm plecl-test
 ```
 
-## macOS
+### macOS
 
 ```bash
 brew install postgresql@16 ecl
 export PATH="$(brew --prefix postgresql@16)/bin:$PATH"
 make
 make install
-psql -c 'CREATE EXTENSION plecl'
+psql -d postgres -c 'CREATE EXTENSION plecl'
 ```
 
-`postgresql@16` is keg-only. Keep its `bin` on `PATH` so `pg_config` matches the cluster you start.
+`postgresql@16` is keg-only — `pg_config` on `PATH` must match the cluster.
 
-## Windows (MSYS2 MinGW64)
-
-For MSYS2 PostgreSQL only.
+### Windows MSYS2 MinGW64
 
 ```bash
 pacman -S --needed base-devel mingw-w64-x86_64-gcc \
   mingw-w64-x86_64-ecl mingw-w64-x86_64-postgresql
-# in a MINGW64 shell
+# MINGW64 shell
 make
 make install
 psql -c 'CREATE EXTENSION plecl'
 ```
 
-## Windows (MSVC, official / EDB)
+### Windows MSVC (existing EDB install)
 
-Same compiler as the EnterpriseDB installer: VS 2019/2022 x64, `/MD` UCRT. ECL is built with that toolchain and statically absorbs gc/gmp.
+Prereqs:
+
+- Visual Studio 2019/2022 **x64**, workload “Desktop development with C++” (or Build Tools + MSVC + Windows SDK)
+- Official PostgreSQL 16 already installed (`pg_config.exe`, `include\server`, `lib\postgres.lib`)
+- curl + tar (Windows 10+), or Git for Windows
+
+Admin **x64 Native Tools Command Prompt**:
 
 ```bat
-REM x64 Native Tools Command Prompt for VS 2022
+cd /d C:\src\plecl
 set ECL_PREFIX=C:\ecl-msvc
-set PG_CONFIG=C:\Program Files\PostgreSQL\16\bin\pg_config.exe
-
-powershell -File scripts\fetch-pg-msvc.ps1
-REM skip fetch if you already have the EDB install; point PG_CONFIG at it
-
+set "PG_CONFIG=C:\Program Files\PostgreSQL\16\bin\pg_config.exe"
 scripts\build-ecl-msvc.bat
 scripts\build-msvc.bat
 scripts\build-msvc.bat install
 ```
 
-`install` copies `plecl.dll` + Lisp + `encodings` into `pkglibdir`, and `ecl.dll` into both `pkglibdir` and `bindir` (so `postgres.exe` finds it). `_PG_init` sets `ECLDIR` to `pkglibdir` when unset.
+`install` writes `plecl.dll`, `*.lisp`, `encodings\`, `help.doc` to `pkglibdir`, `plecl.control` + `plecl--0.1.0.sql` to `share\extension`, and `ecl.dll` to **both** `pkglibdir` and `bindir`.
 
-One-shot (CI / local throwaway EDB zip):
+Restart the PostgreSQL Windows service, then `CREATE EXTENSION plecl`.
+
+ECL 24.5.10 is downloaded to `%TEMP%` / `%RUNNER_TEMP%` and installed to `ECL_PREFIX` (no spaces). First build is slow; rerunning the bat is a no-op if `ecl.dll` is already there.
+
+Throwaway EDB zip + ECL + install (CI):
 
 ```powershell
-# from an x64 Native Tools prompt
+# still from an x64 Native Tools prompt
 powershell -File scripts\ci-windows-msvc.ps1
 bash scripts/run-sql-tests.sh
 ```
 
-Pins: ECL **24.5.10**, EDB binaries **16.15-1** (`PG_MSVC_VERSION`, `PG_MSVC_URL` override).
+Pins: ECL **24.5.10**, EDB binaries **16.15-1**. Overrides: `ECL_VERSION`, `ECL_URL`, `ECL_PREFIX`, `PG_MSVC_VERSION`, `PG_MSVC_URL`, `PG_MSVC_ROOT`.
 
-## Release tarball
+---
 
-CI tags publish `dist/plecl-$VERSION-$PLATFORM.{tar.gz,zip}`:
+## Enable / verify
+
+```sql
+CREATE EXTENSION plecl;          -- superuser
+CREATE EXTENSION IF NOT EXISTS plecl;
+
+CREATE FUNCTION add1(n integer) RETURNS integer
+LANGUAGE plecl STRICT AS $plecl$(1+ n)$plecl$;
+
+SELECT add1(41);                 -- 42
+SELECT lisp.asdf_version();      -- 3.3.7
+```
+
+`DROP EXTENSION plecl CASCADE;` removes the language, schema `lisp`, and functions that depend on it. It does not delete `plecl.dll` / `ecl.dll`.
+
+SQL suite after a source install: `./scripts/run-sql-tests.sh` (throwaway cluster; Windows uses TCP `127.0.0.1:55432`).
+
+---
+
+## Uninstall (files)
+
+```bash
+# Unix
+sudo rm -f "$(pg_config --pkglibdir)/plecl.so" \
+           "$(pg_config --pkglibdir)/"{plecl,inspect,blob,asdf}.lisp
+sudo rm -f "$(pg_config --sharedir)/extension/plecl.control" \
+           "$(pg_config --sharedir)/extension/plecl--*.sql"
+```
+
+```powershell
+$root = "C:\Program Files\PostgreSQL\16"
+Remove-Item -Force "$root\lib\plecl.dll", "$root\lib\ecl.dll", "$root\bin\ecl.dll"
+Remove-Item -Force "$root\lib\plecl.lisp", "$root\lib\inspect.lisp", "$root\lib\blob.lisp", "$root\lib\asdf.lisp"
+Remove-Item -Recurse -Force "$root\lib\encodings" -ErrorAction SilentlyContinue
+Remove-Item -Force "$root\share\extension\plecl.control", "$root\share\extension\plecl--0.1.0.sql"
+```
+
+---
+
+## Layout of a release dir
 
 ```
-lib/plecl.so          # .dll on Windows
-lib/ecl.dll           # MSVC zip only
-lib/encodings/        # MSVC zip only
+lib/plecl.so | plecl.dll
+lib/ecl.dll            # MSVC zip only
+lib/encodings/         # MSVC zip only
+lib/help.doc           # MSVC zip only, if present
 lib/plecl.lisp
 lib/inspect.lisp
 lib/blob.lisp
@@ -99,19 +226,29 @@ share/extension/plecl.control
 share/extension/plecl--0.1.0.sql
 ```
 
-| artifact | loads into |
-|---|---|
-| `windows-x86_64` | MSYS2 MinGW64 Postgres |
-| `windows-x86_64-msvc` | EDB / official MSVC Postgres |
+---
 
-Copy `lib/*` into `$(pg_config --pkglibdir)` and `share/extension/*` into `$(pg_config --sharedir)/extension`. For MSVC also copy `ecl.dll` into `$(pg_config --bindir)`.
+## Troubleshooting
+
+| symptom | cause |
+|---|---|
+| `could not load library … 193` / `%1 is not a valid Win32` | MinGW dll in EDB, or 32-bit vs 64-bit |
+| `The specified module could not be found` / `ecl.dll` | `ecl.dll` not in `bindir`; or MinGW `PATH` missing `/mingw64/bin` |
+| `incompatible library` / magic number | artifact built for another PG major |
+| `plecl: failed to load …/plecl.lisp` | lisp files not in `pkglibdir` |
+| missing encodings / unicode errors (MSVC) | `lib\encodings\` not copied; `ECLDIR` not pointing at `pkglibdir` |
+| `CREATE EXTENSION` → `not found` | control/sql not in `share/extension`; wrong `pg_config` |
+| backend hangs on first call | body used native `COMPILE` (forks gcc). Use bytecode only |
+| `permission denied` installing under `Program Files` | need an elevated prompt |
+
+`shared_preload_libraries` is not required. First `LANGUAGE plecl` call runs `cl_boot`.
 
 ## Client (no backend)
 
-ASDF system `plecl` — dollar-quote, inspector walkers, blob packer. SBCL/Roswell; does not load `vendor/asdf.lisp`.
+ASDF system `plecl` — dollar-quote, inspector walkers, blob packer. Does not load `vendor/asdf.lisp`.
 
 ```bash
 ros -e '(asdf:test-system "plecl")' -q
 ```
 
-OCI: `ghcr.io/egao1980/cl-systems/plecl:0.1.0` via `publish-checkout.yml`.
+OCI: `ghcr.io/egao1980/cl-systems/plecl:0.1.0`.

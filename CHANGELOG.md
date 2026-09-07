@@ -9,3 +9,4 @@
 - Client ASDF (`dollar-quote`, inspect, pack).
 - CI: Lisp on Ubuntu/macOS/Windows; extension Docker + native matrix; tagged release tarballs.
 - Windows MSVC: `win32/nmake.mak` + ECL 24.5.10 against official/EDB Postgres (`windows-x86_64-msvc`).
+- Install guide: release drop-in + source, both Windows ABIs, verify/uninstall.
