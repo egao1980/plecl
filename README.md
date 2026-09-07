@@ -1,6 +1,11 @@
 # plecl
 
+[![test](https://github.com/egao1980/plecl/actions/workflows/test.yml/badge.svg)](https://github.com/egao1980/plecl/actions/workflows/test.yml)
+[![release](https://github.com/egao1980/plecl/actions/workflows/release.yml/badge.svg)](https://github.com/egao1980/plecl/actions/workflows/release.yml)
+
 PostgreSQL procedural language: **Embeddable Common Lisp** in the backend.
+
+Docs: [install](docs/install.md) · [language](docs/language.md) · [CI / release](docs/ci-release.md) · [TPC-H analytics](examples/tpch/README.md)
 
 Untrusted (`CREATE LANGUAGE plecl` / `pleclu`). Functions run as the `postgres` OS user with a full ECL image — FFI, files, `ext:system` are available. This is `plpython3u`, not `plpgsql`.
 
@@ -132,28 +137,21 @@ $plecl$;
 
 ## Build
 
-Needs PostgreSQL 16+ (PGXS) and ECL (`ecl-config`).
+PostgreSQL 16+ (PGXS) and ECL. Ubuntu / macOS / Windows: [docs/install.md](docs/install.md).
 
 ```bash
-make
-sudo make install
+make && sudo make install
 psql -c 'CREATE EXTENSION plecl'
+./scripts/run-sql-tests.sh
 ```
 
-Docker (extension + SQL suite):
+Docker (hermetic SQL suite): `docker build -f docker/Dockerfile -t plecl-test . && docker run --rm plecl-test`
 
-```bash
-docker build -f docker/Dockerfile -t plecl .
-docker run --rm plecl
-```
+Client (no backend): `ros -e '(asdf:test-system "plecl")' -q`
 
-Client helpers (dollar-quote, inspector, blob packer — no backend):
+SQL suite is split like `src/pl/plpython/sql`. `plecl_expect` fails the script on a wrong value.
 
-```bash
-ros -e '(asdf:test-system "plecl")' -q
-```
-
-SQL suite is split like `src/pl/plpython/sql` (types / call / spi / srf / trigger / error / do / inspect / blob / window). `plecl_expect` fails the script on a wrong value. Docker runs `tests/sql/*.sql` in order.
+Tagged `v*` → GitHub Release binaries (`linux-x86_64`, `macos-arm64`, `windows-x86_64`) + OCI `ghcr.io/egao1980/cl-systems/plecl`. [docs/ci-release.md](docs/ci-release.md).
 
 ## Signals / GC
 

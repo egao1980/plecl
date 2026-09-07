@@ -4,16 +4,93 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: plecl-test-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
 
 jobs:
   lisp:
     uses: egao1980/cl-repository/.github/workflows/test-system.yml@main
+    with:
+      os-json: '["ubuntu-latest","macos-latest","windows-latest"]'
 
-  extension:
+  extension-docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Build and test extension
+      - name: Docker SQL suite
         run: docker build -f docker/Dockerfile -t plecl-test . && docker run --rm plecl-test
+
+  extension:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            pack: linux-x86_64
+            shell: bash
+          - os: macos-latest
+            pack: macos-arm64
+            shell: bash
+          - os: windows-latest
+            pack: windows-x86_64
+            shell: msys2 {0}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        with:
+          msystem: MINGW64
+          update: true
+          path-type: inherit
+          install: >-
+            base-devel
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-ecl
+            mingw-w64-x86_64-postgresql
+            zip
+
+      - name: Deps (Ubuntu)
+        if: runner.os == 'Linux'
+        run: ./scripts/ci-deps.sh linux
+
+      - name: Deps (macOS)
+        if: runner.os == 'macOS'
+        run: ./scripts/ci-deps.sh macos
+
+      - name: Build and install
+        run: |
+          set -euo pipefail
+          if command -v ecl-config >/dev/null; then
+            echo "ECL $(ecl-config --cflags) $(ecl-config --libs)"
+          fi
+          pg_config --version
+          make
+          if [[ "$(uname -s)" == Linux ]]; then
+            sudo make install
+          else
+            make install
+          fi
+
+      - name: SQL suite
+        run: ./scripts/run-sql-tests.sh
+
+      - name: Pack
+        run: ./scripts/pack-release.sh "${{ matrix.pack }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plecl-${{ matrix.pack }}
+          path: dist/plecl-*
+          if-no-files-found: error

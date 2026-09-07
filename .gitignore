@@ -1,5 +1,8 @@
 *.o
 *.so
+*.dll
+*.dylib
+/dist/
 *.fasl
 *.lib
 *.fas

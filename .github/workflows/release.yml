@@ -1,0 +1,127 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (empty → tag or plecl.control)"
+        required: false
+        default: ""
+        type: string
+
+concurrency:
+  group: plecl-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  extension:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            pack: linux-x86_64
+            shell: bash
+          - os: macos-latest
+            pack: macos-arm64
+            shell: bash
+          - os: windows-latest
+            pack: windows-x86_64
+            shell: msys2 {0}
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: msys2/setup-msys2@v2
+        if: runner.os == 'Windows'
+        with:
+          msystem: MINGW64
+          update: true
+          path-type: inherit
+          install: >-
+            base-devel
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-ecl
+            mingw-w64-x86_64-postgresql
+            zip
+
+      - name: Deps (Ubuntu)
+        if: runner.os == 'Linux'
+        run: ./scripts/ci-deps.sh linux
+
+      - name: Deps (macOS)
+        if: runner.os == 'macOS'
+        run: ./scripts/ci-deps.sh macos
+
+      - name: Version
+        run: |
+          set -euo pipefail
+          V="${{ inputs.version }}"
+          if [[ -z "$V" && "${GITHUB_REF_TYPE:-}" == tag ]]; then
+            V="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ -z "$V" ]]; then
+            V=$(sed -n "s/.*default_version *= *['\"]\\([^'\"]*\\)['\"].*/\\1/p" plecl.control)
+          fi
+          echo "VERSION=$V" >> "$GITHUB_ENV"
+          echo "version=$V"
+
+      - name: Build, test, pack
+        env:
+          VERSION: ${{ env.VERSION }}
+        run: |
+          set -euo pipefail
+          make
+          if [[ "$(uname -s)" == Linux ]]; then
+            sudo make install
+          else
+            make install
+          fi
+          ./scripts/run-sql-tests.sh
+          ./scripts/pack-release.sh "${{ matrix.pack }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plecl-${{ matrix.pack }}
+          path: dist/plecl-*
+          if-no-files-found: error
+
+  client:
+    uses: egao1980/cl-repository/.github/workflows/publish-source.yml@main
+    with:
+      version: ${{ inputs.version }}
+    permissions:
+      contents: read
+      packages: write
+
+  github-release:
+    if: github.ref_type == 'tag' || inputs.version != ''
+    needs: [extension]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: plecl-*
+          merge-multiple: true
+      - name: Files
+        run: find artifacts -type f | sort
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
+          name: plecl ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', inputs.version) }}
+          body_path: CHANGELOG.md
+          generate_release_notes: true
+          files: artifacts/plecl-*
+          fail_on_unmatched_files: true

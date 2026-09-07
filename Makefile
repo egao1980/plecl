@@ -22,8 +22,11 @@ endif
 override PG_CPPFLAGS += $(ECL_CFLAGS) -I$(srcdir)/src
 override SHLIB_LINK += $(ECL_LIBS)
 
-.PHONY: install-lisp
+.PHONY: install-lisp dist
 install: install-lisp
+
+dist:
+	$(SHELL) "$(srcdir)/scripts/pack-release.sh" $(or $(PLATFORM),linux-x86_64)
 
 install-lisp:
 	$(MKDIR_P) '$(DESTDIR)$(pkglibdir)'
