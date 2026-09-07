@@ -101,7 +101,7 @@ SELECT path, kind, value FROM lisp.inspect('(cons 1 (list 2 3))', 3);
 
 ## Bundled ASDF
 
-`vendor/asdf.lisp` is **ASDF 3.3.7** (MIT, https://asdf.common-lisp.dev/). Boot installs ECL's bytecode compiler, then `LOAD`s that file — never `require` the distro image first (native `COMPILE` → gcc → hung backend). `SELECT lisp.asdf_version();` → `3.3.7`.
+`vendor/asdf.lisp` is **ASDF 3.3.7** (MIT, https://asdf.common-lisp.dev/). `SELECT lisp.asdf_version();` reads the file banner (`3.3.7`) — it does not eval 14k forms into the backend (Ubuntu ECL SIGSEGVs). `ensure-asdf` loads a bytecode `asdf.fasc` when `make install` compiled one, otherwise evals the source. Never `require` the distro image first.
 
 ## Load a system from bytea
 

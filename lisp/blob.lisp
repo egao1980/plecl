@@ -220,13 +220,39 @@
             do (setf last (eval form))))
     last))
 
+(defun bundled-asdf-lisp ()
+  (or (and *runtime-directory* (merge-pathnames "asdf.lisp" *runtime-directory*))
+      (let ((here (or *load-truename* *compile-file-truename*)))
+        (and here (merge-pathnames "asdf.lisp"
+                                   (merge-pathnames "../vendor/" here))))))
+
+(defun asdf-version-from-banner ()
+  "Parse 'This is ASDF X.Y.Z' from vendor/asdf.lisp. Do not eval the file —
+   14k forms SIGSEGV Ubuntu ECL inside PGDG postgres (80_inspect)."
+  (let ((path (bundled-asdf-lisp)))
+    (when (and path (probe-file path))
+      (with-open-file (in path)
+        (loop repeat 12
+              for line = (read-line in nil nil)
+              while line
+              do (let ((p (search "This is ASDF " line)))
+                   (when p
+                     (let* ((rest (subseq line (+ p 13)))
+                            (end (or (position-if
+                                      (lambda (c)
+                                        (or (char= c #\:) (char= c #\Space)))
+                                      rest)
+                                     (length rest))))
+                       (return (subseq rest 0 end))))))))))
+
 (defun asdf-version-string ()
-  (ensure-asdf)
   (let* ((pkg (find-package :asdf))
          (fn (and pkg (find-symbol "ASDF-VERSION" pkg))))
-    (if (and fn (fboundp fn))
-        (princ-to-string (funcall fn))
-        +null+)))
+    (cond
+      ((and fn (fboundp fn))
+       (princ-to-string (funcall fn)))
+      (t
+       (or (asdf-version-from-banner) +null+)))))
 
 (defun load-lisp-source-file (path)
   "EVAL forms from PATH. Do not LOAD — ECL LOAD compile-files and will
@@ -245,19 +271,29 @@
             until (eq form in)
             do (eval form)))))
 
+(defun rehook-debugger ()
+  (let ((rehook (find-symbol "INSTALL-DEBUGGER-HOOKS" "PLECL")))
+    (when (and rehook (fboundp rehook))
+      (funcall rehook))))
+
 (defun load-bundled-asdf ()
-  "Install the bytecode compiler, then eval vendor/asdf.lisp (3.3.7)."
+  "Bytecode .fasc if install compiled it; else eval vendor/asdf.lisp.
+   Never (require :asdf) first — distro image pulls native cmp / gcc."
   (ensure-bytecode-compiler)
-  (let ((path (or (and *runtime-directory* (merge-pathnames "asdf.lisp" *runtime-directory*))
+  (let* ((dir (or *runtime-directory*
                   (let ((here (or *load-truename* *compile-file-truename*)))
-                    (and here (merge-pathnames "asdf.lisp"
-                                               (merge-pathnames "../vendor/" here)))))))
+                    (and here (make-pathname :name nil :type nil :defaults here)))))
+         (fasc (and dir (merge-pathnames "asdf.fasc" dir)))
+         (lisp (bundled-asdf-lisp)))
     (cond
-      ((and path (probe-file path))
-       (load-lisp-source-file path)
-       (let ((rehook (find-symbol "INSTALL-DEBUGGER-HOOKS" "PLECL")))
-         (when (and rehook (fboundp rehook))
-           (funcall rehook)))
+      ((and fasc (probe-file fasc))
+       (let ((*compile-verbose* nil) (*load-verbose* nil))
+         (load fasc))
+       (rehook-debugger)
+       :bundled-fasc)
+      ((and lisp (probe-file lisp))
+       (load-lisp-source-file lisp)
+       (rehook-debugger)
        :bundled)
       ((find-package :asdf)
        :preloaded)

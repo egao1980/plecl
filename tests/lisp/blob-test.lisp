@@ -52,7 +52,10 @@
                                               :defaults (asdf:system-source-file "plecl")))))
     (ok (probe-file path))
     (ok (search "This is ASDF 3.3.7"
-                (with-open-file (in path) (read-line in) (read-line in))))))
+                (with-open-file (in path) (read-line in) (read-line in))))
+    (let ((plecl::*runtime-directory*
+            (make-pathname :name nil :type nil :defaults path)))
+      (ok (string= "3.3.7" (plecl::asdf-version-from-banner))))))
 
 (deftest backend-lisp-no-uiop-reader
   ;; blob.lisp is LOADed into ECL before ASDF/UIOP exists. A `uiop:` token

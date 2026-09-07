@@ -218,4 +218,4 @@ LANGUAGE plecl AS $plecl$
 $plecl$;
 
 COMMENT ON FUNCTION lisp.asdf_version() IS
-  'ASDF version loaded into the backend (bundled 3.3.7)';
+  'Bundled vendor/asdf.lisp version (3.3.7). Does not eval ASDF into the image.';
