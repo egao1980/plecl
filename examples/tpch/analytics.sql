@@ -205,14 +205,13 @@ LANGUAGE plecl AS $plecl$
       (values pts mean sd)))
 
   (defun kmeans-pp (pts k nfeat)
+    "Farthest-point init (deterministic). Random k-means++ failed CI."
     (let* ((n (length pts))
            (k (min k n))
-           (cent (make-array k))
-           (first (random n)))
-      (setf (aref cent 0) (copy-seq (aref pts first)))
+           (cent (make-array k)))
+      (setf (aref cent 0) (copy-seq (aref pts 0)))
       (loop for c from 1 below k
             for dist = (make-array n :initial-element 0.0d0)
-            for tot = 0.0d0
             do (loop for i from 0 below n
                      for p = (aref pts i)
                      for best = most-positive-double-float
@@ -222,16 +221,12 @@ LANGUAGE plecl AS $plecl$
                                                           (aref (aref cent j) f))
                                             sum (* diff diff))
                               do (setf best (min best d)))
-                        (setf (aref dist i) best)
-                        (incf tot best))
-               (let ((r (* (random 1.0d0) tot))
-                     (acc 0.0d0)
-                     (pick 0))
+                        (setf (aref dist i) best))
+               (let ((pick 0)
+                     (best-d -1.0d0))
                  (loop for i from 0 below n
-                       do (incf acc (aref dist i))
-                          (when (>= acc r)
-                            (setf pick i)
-                            (return)))
+                       when (> (aref dist i) best-d)
+                         do (setf best-d (aref dist i) pick i))
                  (setf (aref cent c) (copy-seq (aref pts pick)))))
       cent))
 
@@ -267,7 +262,7 @@ LANGUAGE plecl AS $plecl$
                              do (setf (aref (aref cent j) f)
                                       (/ (aref (aref sum j) f) (aref cnt j))))
                        (setf (aref cent j)
-                             (copy-seq (aref pts (random n))))))))
+                             (copy-seq (aref pts (mod j n))))))))
       (values assign cent)))
 
   (defun holt-winters (ys m alpha beta gamma)

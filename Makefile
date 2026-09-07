@@ -42,24 +42,15 @@ endef
 
 override PG_CFLAGS += -Wno-declaration-after-statement
 
-.PHONY: install-lisp dist asdf-fasc
+.PHONY: install-lisp dist
 install: install-lisp
 
 dist:
 	$(SHELL) "$(srcdir)/scripts/pack-release.sh" $(or $(PLATFORM),linux-x86_64)
 
-asdf-fasc:
-	@if command -v ecl >/dev/null 2>&1; then \
-	  ecl --norc \
-	    --eval '(ext:install-bytecodes-compiler)' \
-	    --eval '(unless (compile-file #P"$(srcdir)/vendor/asdf.lisp" :output-file #P"asdf.fasc") (ext:quit 1))' \
-	    --eval '(ext:quit 0)'; \
-	fi
-
-install-lisp: asdf-fasc
+install-lisp:
 	$(MKDIR_P) '$(DESTDIR)$(pkglibdir)'
 	$(INSTALL_DATA) $(srcdir)/lisp/plecl.lisp '$(DESTDIR)$(pkglibdir)/plecl.lisp'
 	$(INSTALL_DATA) $(srcdir)/lisp/inspect.lisp '$(DESTDIR)$(pkglibdir)/inspect.lisp'
 	$(INSTALL_DATA) $(srcdir)/lisp/blob.lisp '$(DESTDIR)$(pkglibdir)/blob.lisp'
 	$(INSTALL_DATA) $(srcdir)/vendor/asdf.lisp '$(DESTDIR)$(pkglibdir)/asdf.lisp'
-	if test -f asdf.fasc; then $(INSTALL_DATA) asdf.fasc '$(DESTDIR)$(pkglibdir)/asdf.fasc'; fi
