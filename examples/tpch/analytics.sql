@@ -348,7 +348,7 @@ DO LANGUAGE plecl $plecl$
                          (aref lp t_) (if (zerop prev)
                                           (aref dp0 t_)
                                           (aref dp1 t_))))
-          (values path lp))))))
+          (values path lp)))))
 $plecl$;
 
 -- Weighted interval scheduling: max-revenue non-overlapping [ship, receipt] windows.
