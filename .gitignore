@@ -9,6 +9,7 @@
 *.fasl
 *.lib
 *.fas
+*.fasc
 *.data
 *.dSYM/
 .DS_Store

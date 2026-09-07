@@ -80,6 +80,10 @@ copy_one "$ST/lib/" -name 'plecl.lisp'
 copy_one "$ST/lib/" -name 'inspect.lisp'
 copy_one "$ST/lib/" -name 'blob.lisp'
 copy_one "$ST/lib/" -name 'asdf.lisp'
+fasc=$(find "$DEST" -name asdf.fasc | head -n 1)
+if [[ -n "$fasc" ]]; then
+  cp -a "$fasc" "$ST/lib/"
+fi
 cp -a LICENSE README.md "$ST/"
 printf '%s\n' "$VERSION" "$PLATFORM" > "$ST/VERSION"
 

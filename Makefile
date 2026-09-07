@@ -42,15 +42,26 @@ endef
 
 override PG_CFLAGS += -Wno-declaration-after-statement
 
-.PHONY: install-lisp dist
+.PHONY: install-lisp dist asdf-fasc
 install: install-lisp
 
 dist:
 	$(SHELL) "$(srcdir)/scripts/pack-release.sh" $(or $(PLATFORM),linux-x86_64)
 
-install-lisp:
+# ECL 26 bytecmp: compile-file of asdf.lisp needs a prior LOAD (see scripts/compile-asdf.lisp).
+asdf-fasc: $(srcdir)/vendor/asdf.lisp $(srcdir)/scripts/compile-asdf.lisp
+	@if command -v ecl >/dev/null 2>&1; then \
+	  ASDF_LISP="$(srcdir)/vendor/asdf.lisp" ASDF_FASC="asdf.fasc" \
+	    ecl --norc --load "$(srcdir)/scripts/compile-asdf.lisp"; \
+	else \
+	  echo "asdf-fasc: ecl not on PATH" >&2; \
+	  exit 1; \
+	fi
+
+install-lisp: asdf-fasc
 	$(MKDIR_P) '$(DESTDIR)$(pkglibdir)'
 	$(INSTALL_DATA) $(srcdir)/lisp/plecl.lisp '$(DESTDIR)$(pkglibdir)/plecl.lisp'
 	$(INSTALL_DATA) $(srcdir)/lisp/inspect.lisp '$(DESTDIR)$(pkglibdir)/inspect.lisp'
 	$(INSTALL_DATA) $(srcdir)/lisp/blob.lisp '$(DESTDIR)$(pkglibdir)/blob.lisp'
 	$(INSTALL_DATA) $(srcdir)/vendor/asdf.lisp '$(DESTDIR)$(pkglibdir)/asdf.lisp'
+	$(INSTALL_DATA) asdf.fasc '$(DESTDIR)$(pkglibdir)/asdf.fasc'
