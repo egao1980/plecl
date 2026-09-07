@@ -3,7 +3,9 @@
 #include <string.h>
 #include "funcapi.h"
 #include "nodes/parsenodes.h"
+#include "utils/guc.h"
 #include "utils/rel.h"
+#include "utils/tuplestore.h"
 
 PG_MODULE_MAGIC;
 
@@ -13,6 +15,28 @@ PG_FUNCTION_INFO_V1(plecl_validator);
 
 static bool		ecl_booted = false;
 static char		plecl_abort_msg[2048];
+
+typedef struct PleclFnState
+{
+	TransactionId xmin;
+} PleclFnState;
+
+static bool
+plecl_xmin_hit(FunctionCallInfo fcinfo, TransactionId xmin)
+{
+	PleclFnState *st = (PleclFnState *) fcinfo->flinfo->fn_extra;
+
+	if (st != NULL && st->xmin == xmin)
+		return true;
+	if (st == NULL)
+	{
+		st = (PleclFnState *) MemoryContextAlloc(fcinfo->flinfo->fn_mcxt,
+												 sizeof(PleclFnState));
+		fcinfo->flinfo->fn_extra = (void *) st;
+	}
+	st->xmin = xmin;
+	return false;
+}
 
 cl_object
 plecl_symbol(const char *name)
@@ -373,7 +397,7 @@ trigger_plist(FunctionCallInfo fcinfo)
 
 static Datum
 handle_trigger(FunctionCallInfo fcinfo, HeapTuple protup, Form_pg_proc proc,
-			   char *src, TransactionId xmin)
+			   cl_object source, TransactionId xmin)
 {
 	TriggerData *td = (TriggerData *) fcinfo->context;
 	TupleDesc	tupdesc = RelationGetDescr(td->tg_relation);
@@ -385,7 +409,7 @@ handle_trigger(FunctionCallInfo fcinfo, HeapTuple protup, Form_pg_proc proc,
 	args = cl_list(6,
 				   ecl_make_uint32_t(fcinfo->flinfo->fn_oid),
 				   ecl_make_uint32_t(xmin),
-				   plecl_string(src, strlen(src)),
+				   source,
 				   ECL_NIL,
 				   ECL_NIL,
 				   trigger_plist(fcinfo));
@@ -427,16 +451,80 @@ srf_next_datum(FunctionCallInfo fcinfo, Form_pg_proc proc,
 	return plecl_object_to_datum(proc->prorettype, -1, payload, isnull);
 }
 
+static void
+srf_store_value(Tuplestorestate *store, TupleDesc desc, Oid typid, cl_object obj)
+{
+	if (type_is_rowtype(typid))
+	{
+		HeapTuple	tup = plecl_object_to_tuple(obj, desc);
+
+		tuplestore_puttuple(store, tup);
+		heap_freetuple(tup);
+	}
+	else
+	{
+		Datum		values[1];
+		bool		nulls[1];
+
+		values[0] = plecl_object_to_datum(typid, -1, obj, &nulls[0]);
+		tuplestore_putvalues(store, desc, values, nulls);
+	}
+}
+
 static Datum
-handle_srf(FunctionCallInfo fcinfo, Form_pg_proc proc, char *src,
+handle_srf_materialize(FunctionCallInfo fcinfo, Form_pg_proc proc, cl_object source,
+					   TransactionId xmin, cl_object argnames, cl_object argvals)
+{
+	ReturnSetInfo *rsi = (ReturnSetInfo *) fcinfo->resultinfo;
+	MemoryContext old;
+	Tuplestorestate *store;
+	TupleDesc	desc;
+	cl_object	boxed;
+	cl_object	tag;
+	cl_object	payload;
+	cl_object	c;
+
+	rsi->returnMode = SFRM_Materialize;
+	old = MemoryContextSwitchTo(rsi->econtext->ecxt_per_query_memory);
+	desc = CreateTupleDescCopy(rsi->expectedDesc);
+	store = tuplestore_begin_heap(true, false, work_mem);
+	rsi->setResult = store;
+	rsi->setDesc = desc;
+	boxed = plecl_apply("DISPATCH-SET-LIST",
+						cl_list(5,
+								ecl_make_uint32_t(fcinfo->flinfo->fn_oid),
+								ecl_make_uint32_t(xmin),
+								source,
+								argnames,
+								argvals));
+	tag = unwrap_status(boxed, &payload);
+	if (keyword_eq(tag, "OK") == ECL_T)
+	{
+		for (c = payload; ECL_CONSP(c); c = ECL_CONS_CDR(c))
+			srf_store_value(store, desc, proc->prorettype, ECL_CONS_CAR(c));
+	}
+	else if (keyword_eq(tag, "NULL") != ECL_T)
+		ereport(ERROR,
+				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+				 errmsg("plecl: set-returning function must return a list")));
+	MemoryContextSwitchTo(old);
+	PG_RETURN_NULL();
+}
+
+static Datum
+handle_srf(FunctionCallInfo fcinfo, Form_pg_proc proc, cl_object source,
 		   TransactionId xmin, cl_object argnames, cl_object argvals)
 {
+	ReturnSetInfo *rsi = (ReturnSetInfo *) fcinfo->resultinfo;
 	FuncCallContext *funcctx;
 	uint32		key;
 	cl_object	boxed;
 	cl_object	tag;
 	cl_object	payload;
 	bool		isnull;
+
+	if (rsi && (rsi->allowedModes & SFRM_Materialize))
+		return handle_srf_materialize(fcinfo, proc, source, xmin, argnames, argvals);
 
 	if (SRF_IS_FIRSTCALL())
 	{
@@ -450,7 +538,7 @@ handle_srf(FunctionCallInfo fcinfo, Form_pg_proc proc, char *src,
 							cl_list(5,
 									ecl_make_uint32_t(fcinfo->flinfo->fn_oid),
 									ecl_make_uint32_t(xmin),
-									plecl_string(src, strlen(src)),
+									source,
 									argnames,
 									argvals));
 		tag = unwrap_status(boxed, &payload);
@@ -495,7 +583,7 @@ handle_srf(FunctionCallInfo fcinfo, Form_pg_proc proc, char *src,
 }
 
 static Datum
-handle_ordinary(FunctionCallInfo fcinfo, Form_pg_proc proc, char *src,
+handle_ordinary(FunctionCallInfo fcinfo, Form_pg_proc proc, cl_object source,
 				TransactionId xmin, cl_object argnames, cl_object argvals)
 {
 	cl_object	boxed;
@@ -508,7 +596,7 @@ handle_ordinary(FunctionCallInfo fcinfo, Form_pg_proc proc, char *src,
 						cl_list(5,
 								ecl_make_uint32_t(fcinfo->flinfo->fn_oid),
 								ecl_make_uint32_t(xmin),
-								plecl_string(src, strlen(src)),
+								source,
 								argnames,
 								argvals));
 	tag = unwrap_status(boxed, &payload);
@@ -533,7 +621,9 @@ plecl_call_handler(PG_FUNCTION_ARGS)
 	Form_pg_proc proc;
 	char	   *src;
 	bool		isnull;
+	bool		hit;
 	TransactionId xmin;
+	cl_object	source;
 	cl_object	argnames;
 	cl_object	argvals;
 
@@ -543,34 +633,41 @@ plecl_call_handler(PG_FUNCTION_ARGS)
 	if (!HeapTupleIsValid(protup))
 		elog(ERROR, "plecl: cache lookup failed for function %u", fcinfo->flinfo->fn_oid);
 	proc = (Form_pg_proc) GETSTRUCT(protup);
-	src = text_to_cstring_copy(SysCacheGetAttr(PROCOID, protup, Anum_pg_proc_prosrc, &isnull));
-	if (isnull)
-		ereport(ERROR,
-				(errcode(ERRCODE_SYNTAX_ERROR),
-				 errmsg("plecl: function has no source")));
 	xmin = HeapTupleHeaderGetRawXmin(protup->t_data);
+	hit = plecl_xmin_hit(fcinfo, xmin);
+	if (hit)
+		source = ECL_NIL;
+	else
+	{
+		src = text_to_cstring_copy(SysCacheGetAttr(PROCOID, protup, Anum_pg_proc_prosrc, &isnull));
+		if (isnull)
+			ereport(ERROR,
+					(errcode(ERRCODE_SYNTAX_ERROR),
+					 errmsg("plecl: function has no source")));
+		source = plecl_string(src, strlen(src));
+	}
 
 	if (CALLED_AS_TRIGGER(fcinfo))
 	{
-		Datum		r = handle_trigger(fcinfo, protup, proc, src, xmin);
+		Datum		r = handle_trigger(fcinfo, protup, proc, source, xmin);
 
 		ReleaseSysCache(protup);
 		return r;
 	}
 
-	argnames = proc_arg_names(protup, proc->pronargs);
+	argnames = hit ? ECL_NIL : proc_arg_names(protup, proc->pronargs);
 	argvals = arg_values_list(fcinfo, proc);
 
 	if (proc->proretset)
 	{
-		Datum		r = handle_srf(fcinfo, proc, src, xmin, argnames, argvals);
+		Datum		r = handle_srf(fcinfo, proc, source, xmin, argnames, argvals);
 
 		ReleaseSysCache(protup);
 		return r;
 	}
 
 	{
-		Datum		r = handle_ordinary(fcinfo, proc, src, xmin, argnames, argvals);
+		Datum		r = handle_ordinary(fcinfo, proc, source, xmin, argnames, argvals);
 
 		ReleaseSysCache(protup);
 		return r;

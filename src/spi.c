@@ -104,33 +104,44 @@ spi_run(cl_object sql_obj, cl_object args_obj, bool want_rows)
 			object_to_spi_arg(ECL_CONS_CAR(c), &types[i], &values[i], &nulls[i]);
 	}
 
-	if (SPI_connect() != SPI_OK_CONNECT)
-		ereport(ERROR,
-				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-				 errmsg("plecl: SPI_connect failed")));
-
-	PG_TRY();
 	{
-		ret = SPI_execute_with_args(sql, nargs, types, values, nulls, false, 0);
-		if (ret < 0)
+		int			spirc = SPI_connect();
+		bool		own_spi;
+
+		if (spirc == SPI_OK_CONNECT)
+			own_spi = true;
+		else if (spirc == SPI_ERROR_CONNECT)
+			own_spi = false;
+		else
 			ereport(ERROR,
 					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-					 errmsg("plecl: SPI_execute failed (%d)", ret)));
-		MemoryContextSwitchTo(oldcontext);
-		if (want_rows && SPI_tuptable != NULL)
-			result = spi_tuptable_to_list(SPI_tuptable);
-		else
-			result = ecl_make_uint64_t((uint64) SPI_processed);
-	}
-	PG_CATCH();
-	{
-		SPI_finish();
-		PG_RE_THROW();
-	}
-	PG_END_TRY();
+					 errmsg("plecl: SPI_connect failed")));
 
-	SPI_finish();
-	return result;
+		PG_TRY();
+		{
+			ret = SPI_execute_with_args(sql, nargs, types, values, nulls, false, 0);
+			if (ret < 0)
+				ereport(ERROR,
+						(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+						 errmsg("plecl: SPI_execute failed (%d)", ret)));
+			MemoryContextSwitchTo(oldcontext);
+			if (want_rows && SPI_tuptable != NULL)
+				result = spi_tuptable_to_list(SPI_tuptable);
+			else
+				result = ecl_make_uint64_t((uint64) SPI_processed);
+		}
+		PG_CATCH();
+		{
+			if (own_spi)
+				SPI_finish();
+			PG_RE_THROW();
+		}
+		PG_END_TRY();
+
+		if (own_spi)
+			SPI_finish();
+		return result;
+	}
 }
 
 cl_object

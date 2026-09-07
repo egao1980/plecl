@@ -13,6 +13,7 @@
            #:validate
            #:dispatch
            #:dispatch-set
+           #:dispatch-set-list
            #:dispatch-trigger
            #:srf-nth
            #:srf-done
@@ -105,21 +106,25 @@
            ,body))))
 
 (defun compile-function (source arg-names)
-  "Read SOURCE into an interpreted function.
-
-  ECL COMPILE shells out to gcc; that hangs the PostgreSQL backend."
+  "Bytecodes-compile SOURCE. Native ECL COMPILE forks gcc and hangs PG."
+  (when (fboundp 'ensure-bytecode-compiler)
+    (ensure-bytecode-compiler))
   (let* ((*package* (find-package '#:plecl.user))
          (forms (read-all source))
          (lambda-form (wrap-body forms arg-names)))
-    (coerce (eval lambda-form) 'function)))
+    (or (ignore-errors (compile nil lambda-form))
+        (coerce (eval lambda-form) 'function))))
 
 (defun cached-function (oid xmin source arg-names)
   (let ((ent (gethash oid *function-cache*)))
     (if (and ent (eql (car ent) xmin))
         (cdr ent)
-        (let ((fn (compile-function source arg-names)))
-          (setf (gethash oid *function-cache*) (cons xmin fn))
-          fn))))
+        (progn
+          (when (or (null source) (and (stringp source) (string= source "")))
+            (error "plecl: cache miss without source"))
+          (let ((fn (compile-function source arg-names)))
+            (setf (gethash oid *function-cache*) (cons xmin fn))
+            fn)))))
 
 (defun %abort-message ()
   (let ((sym (%cl-user-symbol "*PLECL-ABORT-MESSAGE*")))
@@ -172,6 +177,20 @@
                      (key (incf *srf-counter*)))
                 (setf (gethash key *srf-tables*) (coerce list 'vector))
                 (cons :set (cons key (length list))))
+              (boxed-error value))))
+    (error (c)
+      (boxed-error (princ-to-string c)))))
+
+(defun dispatch-set-list (oid xmin source arg-names arg-values)
+  "One-shot SRF: return the row list for tuplestore materialize."
+  (handler-case
+      (let ((fn (cached-function oid xmin source arg-names)))
+        (multiple-value-bind (ok value) (safe-call fn arg-values)
+          (if ok
+              (boxed-ok (cond
+                          ((sql-null-p value) '())
+                          ((listp value) value)
+                          (t (list value))))
               (boxed-error value))))
     (error (c)
       (boxed-error (princ-to-string c)))))
