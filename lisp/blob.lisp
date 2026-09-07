@@ -254,8 +254,9 @@
     (cond
       ((and path (probe-file path))
        (load-lisp-source-file path)
-       (when (fboundp 'install-debugger-hooks)
-         (install-debugger-hooks))
+       (let ((rehook (find-symbol "INSTALL-DEBUGGER-HOOKS" "PLECL")))
+         (when (and rehook (fboundp rehook))
+           (funcall rehook)))
        :bundled)
       ((find-package :asdf)
        :preloaded)
