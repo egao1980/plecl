@@ -16,12 +16,100 @@ keyword_from_attname(const char *name)
 	return ecl_make_keyword(buf);
 }
 
+static Size
+utf8_decode1(const unsigned char *s, Size len, Size i, ecl_character *out)
+{
+	unsigned char	c0;
+
+	if (i >= len)
+	{
+		*out = 0;
+		return 0;
+	}
+	c0 = s[i];
+	if (c0 < 0x80)
+	{
+		*out = (ecl_character) c0;
+		return 1;
+	}
+	if (c0 < 0xC2 || c0 > 0xF4)
+	{
+		*out = (ecl_character) c0;
+		return 1;
+	}
+	if (c0 < 0xE0)
+	{
+		if (i + 1 >= len || (s[i + 1] & 0xC0) != 0x80)
+		{
+			*out = (ecl_character) c0;
+			return 1;
+		}
+		*out = ((ecl_character) (c0 & 0x1F) << 6) | (s[i + 1] & 0x3F);
+		return 2;
+	}
+	if (c0 < 0xF0)
+	{
+		if (i + 2 >= len || (s[i + 1] & 0xC0) != 0x80 || (s[i + 2] & 0xC0) != 0x80)
+		{
+			*out = (ecl_character) c0;
+			return 1;
+		}
+		*out = ((ecl_character) (c0 & 0x0F) << 12)
+			| ((ecl_character) (s[i + 1] & 0x3F) << 6)
+			| (s[i + 2] & 0x3F);
+		return 3;
+	}
+	if (i + 3 >= len
+		|| (s[i + 1] & 0xC0) != 0x80
+		|| (s[i + 2] & 0xC0) != 0x80
+		|| (s[i + 3] & 0xC0) != 0x80)
+	{
+		*out = (ecl_character) c0;
+		return 1;
+	}
+	*out = ((ecl_character) (c0 & 0x07) << 18)
+		| ((ecl_character) (s[i + 1] & 0x3F) << 12)
+		| ((ecl_character) (s[i + 2] & 0x3F) << 6)
+		| (s[i + 3] & 0x3F);
+	return 4;
+}
+
 cl_object
 plecl_string(const char *s, Size len)
 {
+	const unsigned char *p = (const unsigned char *) s;
+	cl_object	str;
+	cl_index	nchars = 0;
+	Size		i;
+	cl_index	k;
+
 	if (s == NULL)
 		return ECL_NIL;
-	return ecl_make_constant_base_string(s, (cl_index) len);
+
+	/* Ubuntu ECL has no ecl_decode_from_cstring. Base strings store bytes;
+	   ecl_char then returns each UTF-8 unit and we double-encode on the way out. */
+	for (i = 0; i < len; )
+	{
+		ecl_character	ch;
+		Size			n = utf8_decode1(p, len, i, &ch);
+
+		if (n == 0)
+			break;
+		i += n;
+		nchars++;
+	}
+	str = cl_make_string(1, ecl_make_fixnum((cl_fixnum) nchars));
+	for (i = 0, k = 0; k < nchars && i < len; k++)
+	{
+		ecl_character	ch;
+		Size			n = utf8_decode1(p, len, i, &ch);
+
+		if (n == 0)
+			break;
+		i += n;
+		ecl_char_set(str, k, ch);
+	}
+	return str;
 }
 
 char *
