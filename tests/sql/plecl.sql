@@ -146,3 +146,43 @@ SELECT count(*) > 0 AS has_ecl
 
 SELECT path, kind FROM lisp.inspect('(cons 1 2)', 2)
 ORDER BY path;
+
+SELECT lisp.asdf_version() = '3.3.7' AS bundled_asdf;
+
+-- system loader from bytea
+SELECT lisp.store_system(
+  'demo-add',
+  convert_to(
+    '(defpackage #:demo-add (:use #:cl) (:export #:add2))
+     (in-package #:demo-add)
+     (defun add2 (x) (+ x 2))',
+    'UTF8'),
+  'lisp'
+);
+
+CREATE FUNCTION demo_add2(n integer) RETURNS integer
+LANGUAGE plecl STRICT AS $plecl$
+(demo-add:add2 n)
+$plecl$;
+
+SELECT demo_add2(40) AS from_blob;
+
+SELECT name, format FROM lisp.loaded WHERE name = 'demo-add';
+
+DO LANGUAGE plecl $plecl$
+(plecl:store-system
+ "demo-mul"
+ (plecl:pack-system
+  '(("demo-mul.asd"
+     . "(defsystem \"demo-mul\" :serial t :components ((:file \"pkg\") (:file \"mul\")))")
+    ("pkg.lisp" . "(defpackage #:demo-mul (:use #:cl) (:export #:mul2))")
+    ("mul.lisp" . "(in-package #:demo-mul) (defun mul2 (x) (* x 2))")))
+ "system")
+$plecl$;
+
+CREATE FUNCTION demo_mul2(n integer) RETURNS integer
+LANGUAGE plecl STRICT AS $plecl$
+(demo-mul:mul2 n)
+$plecl$;
+
+SELECT demo_mul2(21) AS from_packed;

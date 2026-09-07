@@ -160,3 +160,62 @@ COMMENT ON VIEW lisp.cache IS 'plecl function cache (oid, xmin)';
 COMMENT ON VIEW lisp.image IS 'implementation / counts for the embedded ECL image';
 COMMENT ON FUNCTION lisp.inspect(text, integer) IS
   'Walk a symbol, package, or *read-eval*-nil form (e.g. "(list 1 2)")';
+
+CREATE TABLE lisp.systems (
+  name text PRIMARY KEY,
+  payload bytea NOT NULL,
+  format text NOT NULL DEFAULT 'auto',
+  loaded_at timestamptz
+);
+
+COMMENT ON TABLE lisp.systems IS
+  'Lisp source or packed ASDF tree (PLECLSYS1) as bytea; load with lisp.load_system(name)';
+
+CREATE TYPE lisp.loaded_row AS (
+  name text,
+  format text,
+  directory text
+);
+
+CREATE FUNCTION lisp.load_blob(payload bytea, name text DEFAULT 'blob', format text DEFAULT 'auto')
+RETURNS text
+LANGUAGE plecl AS $plecl$
+(plecl:load-blob payload name format)
+$plecl$;
+
+CREATE FUNCTION lisp.load_system(name text)
+RETURNS text
+LANGUAGE plecl AS $plecl$
+(plecl:load-system name)
+$plecl$;
+
+CREATE FUNCTION lisp.store_system(name text, payload bytea, format text DEFAULT 'auto')
+RETURNS text
+LANGUAGE plecl AS $plecl$
+(plecl:store-system name payload format)
+$plecl$;
+
+CREATE FUNCTION lisp.loaded_rows()
+RETURNS SETOF lisp.loaded_row
+LANGUAGE plecl AS $plecl$
+(plecl:catalog-loaded)
+$plecl$;
+
+CREATE VIEW lisp.loaded AS SELECT * FROM lisp.loaded_rows();
+
+COMMENT ON FUNCTION lisp.load_blob(bytea, text, text) IS
+  'Load UTF-8 Lisp source or a PLECLSYS1 packed system from bytea';
+COMMENT ON FUNCTION lisp.load_system(text) IS
+  'Load a row from lisp.systems into the ECL image';
+COMMENT ON FUNCTION lisp.store_system(text, bytea, text) IS
+  'UPSERT lisp.systems and load it';
+COMMENT ON VIEW lisp.loaded IS 'Systems loaded from blobs in this backend';
+
+CREATE FUNCTION lisp.asdf_version()
+RETURNS text
+LANGUAGE plecl AS $plecl$
+(plecl:asdf-version-string)
+$plecl$;
+
+COMMENT ON FUNCTION lisp.asdf_version() IS
+  'ASDF version loaded into the backend (bundled 3.3.7)';

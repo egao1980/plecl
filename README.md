@@ -82,6 +82,42 @@ SELECT path, kind, value FROM lisp.inspect('(cons 1 (list 2 3))', 3);
 
 `lisp.inspect(ref, depth)` walks a symbol, package, or a `*read-eval*`-nil form. Views re-run the SRF on each query.
 
+## Bundled ASDF
+
+`vendor/asdf.lisp` is **ASDF 3.3.7** (MIT, https://asdf.common-lisp.dev/). Boot installs ECL's bytecode compiler, then `LOAD`s that file — never `require` the distro image first (native `COMPILE` → gcc → hung backend). `SELECT lisp.asdf_version();` → `3.3.7`.
+
+## Load a system from bytea
+
+`lisp.systems` holds source or a packed tree (`PLECLSYS1`). `lisp.load_blob` / `lisp.store_system` / `lisp.load_system` eval into the image (bytecode compiler — no gcc):
+
+```sql
+SELECT lisp.store_system(
+  'demo-add',
+  convert_to('(defpackage #:demo-add (:use #:cl) (:export #:add2))
+              (in-package #:demo-add)
+              (defun add2 (x) (+ x 2))', 'UTF8'),
+  'lisp');
+
+CREATE FUNCTION add2(n integer) RETURNS integer
+LANGUAGE plecl STRICT AS $plecl$(demo-add:add2 n)$plecl$;
+
+SELECT add2(40);  -- 42
+SELECT * FROM lisp.loaded;
+```
+
+Packed multi-file (ASDF) from Lisp:
+
+```sql
+DO LANGUAGE plecl $plecl$
+(plecl:store-system "demo-mul"
+  (plecl:pack-system
+    '(("demo-mul.asd" . "(defsystem \"demo-mul\" :serial t :components ((:file \"pkg\") (:file \"mul\")))")
+      ("pkg.lisp" . "(defpackage #:demo-mul (:use #:cl) (:export #:mul2))")
+      ("mul.lisp" . "(in-package #:demo-mul) (defun mul2 (x) (* x 2))")))
+  "system")
+$plecl$;
+```
+
 ## Build
 
 Needs PostgreSQL 16+ (PGXS) and ECL (`ecl-config`).
@@ -116,6 +152,8 @@ ECL signal traps are off (`ECL_OPT_TRAP_SIG*`). Datums are copied into CL object
 | `src/*.c` | call / inline / validator handlers, Datum↔CL, SPI |
 | `lisp/plecl.lisp` | backend runtime (installed to `$pkglibdir`) |
 | `lisp/inspect.lisp` | inspector / catalog used by schema `lisp` |
+| `lisp/blob.lisp` | load ASDF/source from `bytea` (`lisp.systems`) |
+| `vendor/asdf.lisp` | ASDF 3.3.7, installed to `$pkglibdir` |
 | `lisp/client.lisp` | `dollar-quote` / `function-sql` |
 | `sql/plecl--0.1.0.sql` | `CREATE LANGUAGE` + schema `lisp` views |
 | `examples/window-agg.sql` | demo aggregate created from SQL |

@@ -7,6 +7,7 @@
   :serial t
   :components ((:file "package")
                (:file "inspect")
+               (:file "blob")
                (:file "client"))
   :in-order-to ((test-op (test-op "plecl/tests"))))
 
@@ -16,7 +17,8 @@
   :serial t
   :components ((:file "package")
                (:file "plecl-test")
-               (:file "inspect-test"))
+               (:file "inspect-test")
+               (:file "blob-test"))
   :perform (test-op (o c)
              (unless (symbol-call :rove :run c)
                (error "tests failed for ~A" (component-name c)))))

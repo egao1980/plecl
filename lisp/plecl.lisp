@@ -16,8 +16,6 @@
            #:dispatch-trigger
            #:srf-nth
            #:srf-done
-           #:window-over
-           #:window-over-query
            #:inspect-ref
            #:catalog-packages
            #:catalog-symbols
@@ -26,6 +24,14 @@
            #:catalog-features
            #:catalog-cache
            #:catalog-image
+           #:pack-system
+           #:unpack-system
+           #:load-blob
+           #:load-system
+           #:store-system
+           #:catalog-loaded
+           #:load-bundled-asdf
+           #:asdf-version-string
            #:boot
            #:*trigger*
            #:trigger-new
@@ -46,6 +52,9 @@
   (eq x +null+))
 
 (defvar *function-cache* (make-hash-table :test 'eql))
+(defvar *runtime-directory*
+  (let ((here (or *load-truename* *compile-file-truename*)))
+    (and here (make-pathname :name nil :type nil :defaults here))))
 (defvar *srf-tables* (make-hash-table :test 'eql))
 (defvar *srf-counter* 0)
 (defvar *trigger* nil)
@@ -215,6 +224,8 @@
 
 (defun boot ()
   (let ((*package* (find-package '#:plecl.user)))
+    (when (fboundp 'load-bundled-asdf)
+      (load-bundled-asdf))
     (cons :ok nil)))
 
 (defun %load-sibling (name)
@@ -224,3 +235,4 @@
       (load path))))
 
 (%load-sibling "inspect.lisp")
+(%load-sibling "blob.lisp")

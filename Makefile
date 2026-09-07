@@ -29,3 +29,5 @@ install-lisp:
 	$(MKDIR_P) '$(DESTDIR)$(pkglibdir)'
 	$(INSTALL_DATA) $(srcdir)/lisp/plecl.lisp '$(DESTDIR)$(pkglibdir)/plecl.lisp'
 	$(INSTALL_DATA) $(srcdir)/lisp/inspect.lisp '$(DESTDIR)$(pkglibdir)/inspect.lisp'
+	$(INSTALL_DATA) $(srcdir)/lisp/blob.lisp '$(DESTDIR)$(pkglibdir)/blob.lisp'
+	$(INSTALL_DATA) $(srcdir)/vendor/asdf.lisp '$(DESTDIR)$(pkglibdir)/asdf.lisp'

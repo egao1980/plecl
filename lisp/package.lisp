@@ -12,7 +12,15 @@
            #:catalog-specials
            #:catalog-features
            #:catalog-cache
-           #:catalog-image))
+           #:catalog-image
+           #:pack-system
+           #:unpack-system
+           #:load-blob
+           #:load-system
+           #:store-system
+           #:catalog-loaded
+           #:load-bundled-asdf
+           #:asdf-version-string))
 
 (in-package #:plecl)
 
@@ -20,3 +28,6 @@
 
 (defun sql-null-p (x)
   (eq x +null+))
+
+(defpackage #:plecl.user
+  (:use #:cl #:plecl))
