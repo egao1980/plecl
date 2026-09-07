@@ -1,5 +1,6 @@
 #include "plecl.h"
 
+#include <string.h>
 #include "funcapi.h"
 #include "nodes/parsenodes.h"
 #include "utils/rel.h"
@@ -11,6 +12,7 @@ PG_FUNCTION_INFO_V1(plecl_inline_handler);
 PG_FUNCTION_INFO_V1(plecl_validator);
 
 static bool		ecl_booted = false;
+static char		plecl_abort_msg[2048];
 
 cl_object
 plecl_symbol(const char *name)
@@ -53,17 +55,22 @@ cl_object
 plecl_c_debugger(cl_object condition, cl_object hook)
 {
 	cl_env_ptr	env = ecl_process_env();
-	cl_object	msg;
+	cl_object	printed;
 	char	   *s;
 
 	(void) hook;
-	/* Drop hooks first so princ/ereport cannot re-enter the REPL. */
+	/*
+	 * Never ereport() from the debugger — PG longjmp through ECL's C stack
+	 * SIGSEGVs the backend (seen while LOAD'ing asdf.lisp). Throw to
+	 * :PLECL-ABORT; Lisp CATCH / C CATCH_ALL then ereport after unwind.
+	 */
 	ecl_setq(env, ecl_make_symbol("*DEBUGGER-HOOK*", "COMMON-LISP"), ECL_NIL);
-	msg = cl_princ_to_string(condition);
-	s = plecl_cstring_palloc(msg);
-	ereport(ERROR,
-			(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
-			 errmsg("plecl: %s", (s && s[0]) ? s : "error")));
+	printed = cl_princ_to_string(condition);
+	s = plecl_cstring_palloc(printed);
+	snprintf(plecl_abort_msg, sizeof(plecl_abort_msg), "%s",
+			 (s && s[0]) ? s : "error");
+	cl_throw(2, ecl_make_keyword("PLECL-ABORT"),
+			 plecl_string(plecl_abort_msg, strlen(plecl_abort_msg)));
 	return ECL_NIL;
 }
 
@@ -106,6 +113,10 @@ plecl_apply(const char *name, cl_object args)
 	}
 	ECL_CATCH_ALL_IF_CAUGHT
 	{
+		if (plecl_abort_msg[0])
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					 errmsg("plecl: %s", plecl_abort_msg)));
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 				 errmsg("plecl: uncaught non-local exit in %s", name)));
@@ -165,6 +176,10 @@ boot_ecl(void)
 	}
 	ECL_CATCH_ALL_IF_CAUGHT
 	{
+		if (plecl_abort_msg[0])
+			ereport(ERROR,
+					(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+					 errmsg("plecl: %s", plecl_abort_msg)));
 		ereport(ERROR,
 				(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
 				 errmsg("plecl: failed to load %s", lisp_path)));

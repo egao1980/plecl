@@ -121,11 +121,21 @@
           (setf (gethash oid *function-cache*) (cons xmin fn))
           fn))))
 
+(defun call-escaping-debugger (thunk)
+  "Run THUNK. Debugger hook throws :PLECL-ABORT instead of ereport/longjmp."
+  (handler-case
+      (let ((aborted (catch :plecl-abort
+                       (return-from call-escaping-debugger
+                         (values t (funcall thunk))))))
+        (values nil (if (stringp aborted)
+                        aborted
+                        (princ-to-string aborted))))
+    (error (c)
+      (values nil (princ-to-string c)))))
+
 (defun safe-call (fn args)
   (let ((*package* (find-package '#:plecl.user)))
-    (handler-case (values t (apply fn args))
-      (error (c)
-        (values nil (princ-to-string c))))))
+    (call-escaping-debugger (lambda () (apply fn args)))))
 
 (defun boxed-ok (value)
   (if (sql-null-p value)

@@ -227,11 +227,25 @@
         (princ-to-string (funcall fn))
         +null+)))
 
-(defun load-bundled-asdf ()
-  "Install the bytecode compiler, then load vendor/asdf.lisp (3.3.7).
+(defun load-lisp-source-file (path)
+  "EVAL forms from PATH. Do not LOAD — ECL LOAD compile-files and will
+   shell out to gcc (native) or blow the backend (huge bytecode compile)."
+  (ensure-bytecode-compiler)
+  (with-open-file (in path)
+    (let ((*package* (or (find-package :cl-user) *package*))
+          (*read-eval* t)
+          (*load-truename* (ignore-errors (truename path)))
+          (*load-pathname* path)
+          (*compile-verbose* nil)
+          (*compile-print* nil)
+          (*load-verbose* nil)
+          (*load-print* nil))
+      (loop for form = (read in nil in)
+            until (eq form in)
+            do (eval form)))))
 
-  Must not LOAD asdf before the bytecode compiler — ECL's native compiler
-  shells out to gcc and hangs the PostgreSQL backend."
+(defun load-bundled-asdf ()
+  "Install the bytecode compiler, then eval vendor/asdf.lisp (3.3.7)."
   (ensure-bytecode-compiler)
   (let ((path (or (and *runtime-directory* (merge-pathnames "asdf.lisp" *runtime-directory*))
                   (let ((here (or *load-truename* *compile-file-truename*)))
@@ -239,8 +253,9 @@
                                                (merge-pathnames "../vendor/" here)))))))
     (cond
       ((and path (probe-file path))
-       (let ((*package* (find-package :cl-user)))
-         (load path :verbose nil :print nil))
+       (load-lisp-source-file path)
+       (when (fboundp 'install-debugger-hooks)
+         (install-debugger-hooks))
        :bundled)
       ((find-package :asdf)
        :preloaded)
