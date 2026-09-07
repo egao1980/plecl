@@ -44,12 +44,17 @@ override PG_CFLAGS += -Wno-declaration-after-statement
 
 .PHONY: install-lisp dist asdf-fasc
 install: install-lisp
+# Build fasc as the invoking user. If this is only done under
+# `sudo make install`, pack's later DESTDIR install cannot overwrite it.
+all: asdf.fasc
 
 dist:
 	$(SHELL) "$(srcdir)/scripts/pack-release.sh" $(or $(PLATFORM),linux-x86_64)
 
 # ECL 26 bytecmp: compile-file of asdf.lisp needs a prior LOAD (see scripts/compile-asdf.lisp).
-asdf-fasc: $(srcdir)/vendor/asdf.lisp $(srcdir)/scripts/compile-asdf.lisp
+# Real file target — a PHONY asdf-fasc always recompiled, and Ubuntu CI
+# `sudo make install` left a root-owned asdf.fasc that pack could not replace.
+asdf.fasc: $(srcdir)/vendor/asdf.lisp $(srcdir)/scripts/compile-asdf.lisp
 	@if command -v ecl >/dev/null 2>&1; then \
 	  ASDF_LISP="$(srcdir)/vendor/asdf.lisp" ASDF_FASC="asdf.fasc" \
 	    ecl --norc --load "$(srcdir)/scripts/compile-asdf.lisp"; \
@@ -58,7 +63,9 @@ asdf-fasc: $(srcdir)/vendor/asdf.lisp $(srcdir)/scripts/compile-asdf.lisp
 	  exit 1; \
 	fi
 
-install-lisp: asdf-fasc
+asdf-fasc: asdf.fasc
+
+install-lisp: asdf.fasc
 	$(MKDIR_P) '$(DESTDIR)$(pkglibdir)'
 	$(INSTALL_DATA) $(srcdir)/lisp/plecl.lisp '$(DESTDIR)$(pkglibdir)/plecl.lisp'
 	$(INSTALL_DATA) $(srcdir)/lisp/inspect.lisp '$(DESTDIR)$(pkglibdir)/inspect.lisp'
