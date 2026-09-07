@@ -55,7 +55,9 @@ CREATE TYPE tpch_regime AS (
   logp double precision
 );
 
-DO LANGUAGE plecl $plecl$
+DROP FUNCTION IF EXISTS tpch_ensure();
+CREATE FUNCTION tpch_ensure() RETURNS boolean
+LANGUAGE plecl AS $plecl$
 (progn
   (defun tpch-get (row k)
     (let ((pair (assoc k row)))
@@ -348,14 +350,18 @@ DO LANGUAGE plecl $plecl$
                          (aref lp t_) (if (zerop prev)
                                           (aref dp0 t_)
                                           (aref dp1 t_))))
-          (values path lp))))))
+          (values path lp)))))
+  t)
 $plecl$;
+
+SELECT tpch_ensure();
 
 -- Weighted interval scheduling: max-revenue non-overlapping [ship, receipt] windows.
 -- DP + predecessor binary search. SQL cannot express the opt + backpointers cleanly.
 CREATE FUNCTION tpch_interval_schedule(supplier_id integer, start_day integer, end_day integer)
 RETURNS SETOF tpch_interval_pick
 LANGUAGE plecl AS $plecl$
+(unless (fboundp 'tpch-get) (plecl:query-value "SELECT tpch_ensure()"))
 (let* ((sid (if (plecl:sql-null-p supplier_id) 1 supplier_id))
        (lo (if (plecl:sql-null-p start_day) 0 start_day))
        (hi (if (plecl:sql-null-p end_day) 100000 end_day))
@@ -394,6 +400,7 @@ $plecl$;
 CREATE FUNCTION tpch_changepoints(supplier_id integer, min_size integer, penalty double precision)
 RETURNS SETOF tpch_segment
 LANGUAGE plecl AS $plecl$
+(unless (fboundp 'tpch-get) (plecl:query-value "SELECT tpch_ensure()"))
 (let* ((sid (if (plecl:sql-null-p supplier_id) 1 supplier_id))
        (ms (max 2 (if (plecl:sql-null-p min_size) 8 min_size)))
        (pen (if (plecl:sql-null-p penalty) 50.0d0 (tpch-num penalty)))
@@ -425,6 +432,7 @@ $plecl$;
 CREATE FUNCTION tpch_supplier_kmeans(k integer, n_iter integer)
 RETURNS SETOF tpch_cluster
 LANGUAGE plecl AS $plecl$
+(unless (fboundp 'tpch-get) (plecl:query-value "SELECT tpch_ensure()"))
 (let* ((kk (max 1 (if (plecl:sql-null-p k) 3 k)))
        (iters (max 1 (if (plecl:sql-null-p n_iter) 12 n_iter)))
        (rows (plecl:query
@@ -465,6 +473,7 @@ $plecl$;
 CREATE FUNCTION tpch_holt_winters(supplier_id integer, season integer, horizon integer)
 RETURNS SETOF tpch_forecast
 LANGUAGE plecl AS $plecl$
+(unless (fboundp 'tpch-get) (plecl:query-value "SELECT tpch_ensure()"))
 (let* ((sid (if (plecl:sql-null-p supplier_id) 1 supplier_id))
        (m (max 2 (if (plecl:sql-null-p season) 4 season)))
        (h (max 1 (if (plecl:sql-null-p horizon) 4 horizon)))
@@ -509,6 +518,7 @@ $plecl$;
 CREATE FUNCTION tpch_late_viterbi(supplier_id integer)
 RETURNS SETOF tpch_regime
 LANGUAGE plecl AS $plecl$
+(unless (fboundp 'tpch-get) (plecl:query-value "SELECT tpch_ensure()"))
 (let* ((sid (if (plecl:sql-null-p supplier_id) 1 supplier_id))
        (rows (plecl:query
               "SELECT (l_shipdate - DATE '1992-01-01')::int AS day,
