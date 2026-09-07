@@ -69,8 +69,10 @@ plecl_c_debugger(cl_object condition, cl_object hook)
 	s = plecl_cstring_palloc(printed);
 	snprintf(plecl_abort_msg, sizeof(plecl_abort_msg), "%s",
 			 (s && s[0]) ? s : "error");
-	cl_throw(2, ecl_make_keyword("PLECL-ABORT"),
+	/* Ubuntu ECL: cl_throw(tag) only — value lives in CL-USER / the C buffer. */
+	ecl_setq(env, ecl_make_symbol("*PLECL-ABORT-MESSAGE*", "CL-USER"),
 			 plecl_string(plecl_abort_msg, strlen(plecl_abort_msg)));
+	cl_throw(ecl_make_keyword("PLECL-ABORT"));
 	return ECL_NIL;
 }
 

@@ -121,15 +121,20 @@
           (setf (gethash oid *function-cache*) (cons xmin fn))
           fn))))
 
+(defun %abort-message ()
+  (let ((sym (%cl-user-symbol "*PLECL-ABORT-MESSAGE*")))
+    (if (and sym (boundp sym) (stringp (symbol-value sym)))
+        (symbol-value sym)
+        "aborted")))
+
 (defun call-escaping-debugger (thunk)
   "Run THUNK. Debugger hook throws :PLECL-ABORT instead of ereport/longjmp."
   (handler-case
-      (let ((aborted (catch :plecl-abort
-                       (return-from call-escaping-debugger
-                         (values t (funcall thunk))))))
-        (values nil (if (stringp aborted)
-                        aborted
-                        (princ-to-string aborted))))
+      (progn
+        (catch :plecl-abort
+          (return-from call-escaping-debugger
+            (values t (funcall thunk))))
+        (values nil (%abort-message)))
     (error (c)
       (values nil (princ-to-string c)))))
 
