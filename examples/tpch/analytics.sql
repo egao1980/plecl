@@ -230,7 +230,7 @@ DO LANGUAGE plecl $plecl$
                           (when (>= acc r)
                             (setf pick i)
                             (return)))
-                 (setf (aref cent c) (copy-seq (aref pts pick))))))
+                 (setf (aref cent c) (copy-seq (aref pts pick)))))
       cent))
 
   (defun kmeans (pts k n-iter nfeat)
