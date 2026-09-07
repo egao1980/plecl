@@ -1,4 +1,7 @@
 *.o
+*.obj
+*.exp
+*.pdb
 *.so
 *.dll
 *.dylib

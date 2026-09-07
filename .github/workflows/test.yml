@@ -94,3 +94,36 @@ jobs:
           name: plecl-${{ matrix.pack }}
           path: dist/plecl-*
           if-no-files-found: error
+
+  extension-windows-msvc:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: amd64
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/ecl-msvc
+          key: ecl-24.5.10-msvc-win64-md-gc
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/pgsql
+          key: pg-16.15-1-windows-x64-edb
+      - name: Build and install (MSVC + EDB)
+        env:
+          ECL_PREFIX: ${{ runner.temp }}\ecl-msvc
+          PG_MSVC_ROOT: ${{ runner.temp }}\pgsql
+        run: powershell -File scripts/ci-windows-msvc.ps1
+      - name: SQL suite
+        shell: bash
+        run: ./scripts/run-sql-tests.sh
+      - name: Pack
+        shell: bash
+        run: ./scripts/pack-release.sh windows-x86_64-msvc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plecl-windows-x86_64-msvc
+          path: dist/plecl-*
+          if-no-files-found: error

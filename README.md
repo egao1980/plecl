@@ -137,7 +137,7 @@ $plecl$;
 
 ## Build
 
-PostgreSQL 16+ (PGXS) and ECL. Ubuntu / macOS / Windows: [docs/install.md](docs/install.md).
+PostgreSQL 16+ and ECL. Ubuntu / macOS / Windows MinGW (PGXS) / Windows MSVC (EDB): [docs/install.md](docs/install.md).
 
 ```bash
 make && sudo make install
@@ -151,7 +151,7 @@ Client (no backend): `ros -e '(asdf:test-system "plecl")' -q`
 
 SQL suite is split like `src/pl/plpython/sql`. `plecl_expect` fails the script on a wrong value.
 
-Tagged `v*` → GitHub Release binaries (`linux-x86_64`, `macos-arm64`, `windows-x86_64`) + OCI `ghcr.io/egao1980/cl-systems/plecl`. [docs/ci-release.md](docs/ci-release.md).
+Tagged `v*` → GitHub Release binaries (`linux-x86_64`, `macos-arm64`, `windows-x86_64`, `windows-x86_64-msvc`) + OCI `ghcr.io/egao1980/cl-systems/plecl`. [docs/ci-release.md](docs/ci-release.md).
 
 ## Signals / GC
 

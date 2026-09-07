@@ -1,3 +1,5 @@
+# Unix / macOS / MSYS2 MinGW: GNU make + PGXS.
+# Official Windows (EDB / Visual Studio): scripts/build-msvc.bat (win32/nmake.mak).
 EXTENSION = plecl
 MODULE_big = plecl
 OBJS = src/plecl.o src/convert.o src/spi.o

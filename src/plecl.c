@@ -1,5 +1,6 @@
 #include "plecl.h"
 
+#include <stdlib.h>
 #include <string.h>
 #include "funcapi.h"
 #include "nodes/parsenodes.h"
@@ -296,6 +297,32 @@ boot_ecl(void)
 
 	argv[0] = "plecl";
 	argv[1] = NULL;
+#ifdef _MSC_VER
+	/*
+	 * MSVC ECL looks up encodings/help.doc via ECLDIR. Distro postgres.exe
+	 * lives in bindir; we drop those files next to plecl.dll (pkglibdir).
+	 * MinGW keeps ECL's compiled-in prefix — do not override there.
+	 */
+	{
+		const char *ecldir_env = getenv("ECLDIR");
+
+		if (ecldir_env == NULL || ecldir_env[0] == '\0')
+		{
+			char		ecldir[MAXPGPATH];
+			char	   *p;
+
+			strlcpy(ecldir, pkglib_path, sizeof(ecldir));
+			for (p = ecldir; *p; p++)
+			{
+				if (*p == '\\')
+					*p = '/';
+			}
+			if (p == ecldir || p[-1] != '/')
+				strlcat(ecldir, "/", sizeof(ecldir));
+			_putenv_s("ECLDIR", ecldir);
+		}
+	}
+#endif
 	ecl_set_option(ECL_OPT_TRAP_SIGFPE, 0);
 	ecl_set_option(ECL_OPT_TRAP_SIGSEGV, 0);
 	ecl_set_option(ECL_OPT_TRAP_SIGINT, 0);

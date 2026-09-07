@@ -26,7 +26,8 @@ case "${1:-$(uname -s)}" in
     fi
     ;;
   MINGW*|MSYS*|Windows|windows*)
-    echo "Windows: use msys2/setup-msys2 (mingw-w64-x86_64-ecl, mingw-w64-x86_64-postgresql)" >&2
+    echo "Windows MinGW: msys2/setup-msys2 (mingw-w64-x86_64-ecl, mingw-w64-x86_64-postgresql)" >&2
+    echo "Windows MSVC: scripts/ci-windows-msvc.ps1 (ECL 24.5.10 + EDB zip)" >&2
     ;;
   *)
     echo "unknown os: $1" >&2

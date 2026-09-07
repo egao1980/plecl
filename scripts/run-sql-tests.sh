@@ -8,7 +8,9 @@ export PGUSER="${PGUSER:-${USER:-postgres}}"
 SQL_DIR="${SQL_DIR:-$ROOT/tests/sql}"
 
 is_windows() {
-  [[ -n "${MSYSTEM:-}" || "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* || "${OS:-}" == Windows_NT ]]
+  [[ -n "${MSYSTEM:-}" || "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* \
+    || "${OS:-}" == Windows_NT || "$(uname -s 2>/dev/null)" == MINGW* \
+    || "$(uname -s 2>/dev/null)" == MSYS* ]]
 }
 
 find_pgbin() {
@@ -16,14 +18,22 @@ find_pgbin() {
     dirname "$(command -v initdb)"
     return
   fi
+  if command -v pg_config >/dev/null 2>&1; then
+    pg_config --bindir
+    return
+  fi
   local d
   for d in \
+    ${PG_MSVC_ROOT:+$PG_MSVC_ROOT/bin} \
     /usr/lib/postgresql/16/bin /usr/lib/postgresql/15/bin \
     /usr/lib/postgresql/17/bin /usr/lib/postgresql/18/bin \
     /opt/homebrew/opt/postgresql@16/bin /usr/local/opt/postgresql@16/bin \
-    /mingw64/bin
+    /mingw64/bin \
+    "/c/Program Files/PostgreSQL/16/bin" \
+    "/c/Program Files/PostgreSQL/17/bin" \
+    "/c/Program Files/PostgreSQL/18/bin"
   do
-    if [[ -x "$d/initdb" ]]; then
+    if [[ -n "$d" && -x "$d/initdb" ]]; then
       echo "$d"
       return
     fi
@@ -36,10 +46,20 @@ PGBIN=$(find_pgbin) || {
   exit 1
 }
 export PATH="${PGBIN}:${PATH}"
+if [[ -z "${ECLDIR:-}" ]] && command -v pg_config >/dev/null 2>&1; then
+  _pkglib=$(pg_config --pkglibdir)
+  if [[ -d "$_pkglib/encodings" ]]; then
+    export ECLDIR="${_pkglib}/"
+  fi
+fi
 
 mkdir -p "$PGDATA"
 rm -rf "$PGDATA"
-initdb -D "$PGDATA" --auth-local=trust --auth-host=trust >/dev/null
+if is_windows; then
+  initdb -D "$PGDATA" --auth-local=trust --auth-host=trust --encoding=UTF8 --locale=C >/dev/null
+else
+  initdb -D "$PGDATA" --auth-local=trust --auth-host=trust >/dev/null
+fi
 
 if is_windows; then
   export PGHOST=127.0.0.1
