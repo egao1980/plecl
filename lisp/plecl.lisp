@@ -247,12 +247,17 @@
 
 (defun eval-source (source)
   (handler-case
-      (let* ((*package* (find-package '#:plecl.user))
-             (forms (read-all source))
-             (value nil))
-        (dolist (form forms)
-          (setf value (eval form)))
-        (boxed-ok value))
+      (multiple-value-bind (ok value)
+          (call-escaping-debugger
+           (lambda ()
+             (let* ((*package* (find-package '#:plecl.user))
+                    (forms (read-all source))
+                    (result nil))
+               (dolist (form forms result)
+                 (setf result (eval form))))))
+        (if ok
+            (boxed-ok value)
+            (boxed-error value)))
     (error (c)
       (boxed-error (princ-to-string c)))))
 

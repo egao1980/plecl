@@ -4,8 +4,19 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 export PGDATA="${PGDATA:-${TMPDIR:-/tmp}/plecl-pgdata}"
-export PGUSER="${PGUSER:-${USER:-postgres}}"
+# Git-bash on GHA Windows: USER is often unset; initdb creates USERNAME (runneradmin).
+if [[ -z "${PGUSER:-}" ]]; then
+  if [[ -n "${USER:-}" ]]; then
+    PGUSER="$USER"
+  elif [[ -n "${USERNAME:-}" ]]; then
+    PGUSER="$USERNAME"
+  else
+    PGUSER=postgres
+  fi
+fi
+export PGUSER
 SQL_DIR="${SQL_DIR:-$ROOT/tests/sql}"
+PGLOG="${PGLOG:-${TMPDIR:-/tmp}/plecl-pg.log}"
 
 is_windows() {
   [[ -n "${MSYSTEM:-}" || "${OSTYPE:-}" == msys* || "${OSTYPE:-}" == cygwin* \
@@ -56,9 +67,9 @@ fi
 mkdir -p "$PGDATA"
 rm -rf "$PGDATA"
 if is_windows; then
-  initdb -D "$PGDATA" --auth-local=trust --auth-host=trust --encoding=UTF8 --locale=C >/dev/null
+  initdb -D "$PGDATA" --username="$PGUSER" --auth-local=trust --auth-host=trust --encoding=UTF8 --locale=C >/dev/null
 else
-  initdb -D "$PGDATA" --auth-local=trust --auth-host=trust >/dev/null
+  initdb -D "$PGDATA" --username="$PGUSER" --auth-local=trust --auth-host=trust >/dev/null
 fi
 
 if is_windows; then
@@ -68,21 +79,27 @@ if is_windows; then
     echo "listen_addresses = '127.0.0.1'"
     echo "port = ${PGPORT}"
   } >> "$PGDATA/postgresql.conf"
-  pg_ctl -D "$PGDATA" -l "${TMPDIR:-/tmp}/plecl-pg.log" -w start
+  pg_ctl -D "$PGDATA" -l "$PGLOG" -w start
 else
   export PGHOST="${PGHOST:-/tmp}"
   {
     echo "unix_socket_directories = '${PGHOST}'"
     echo "listen_addresses = ''"
   } >> "$PGDATA/postgresql.conf"
-  pg_ctl -D "$PGDATA" -l "${TMPDIR:-/tmp}/plecl-pg.log" -o "-k ${PGHOST}" -w start
+  pg_ctl -D "$PGDATA" -l "$PGLOG" -o "-k ${PGHOST}" -w start
 fi
+dump_pglog() {
+  if [[ -f "$PGLOG" ]]; then
+    echo "---- $PGLOG ----" >&2
+    cat "$PGLOG" >&2 || true
+  fi
+}
 trap 'pg_ctl -D "$PGDATA" -m fast stop >/dev/null 2>&1 || true' EXIT
 
-createdb plecl_test
+createdb plecl_test || { dump_pglog; exit 1; }
 shopt -s nullglob
 for f in "$SQL_DIR"/*.sql; do
   echo "== $(basename "$f") =="
-  psql -d plecl_test -v ON_ERROR_STOP=1 -f "$f"
+  psql -d plecl_test -v ON_ERROR_STOP=1 -f "$f" || { dump_pglog; exit 1; }
 done
 echo "plecl extension tests OK"

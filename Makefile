@@ -32,6 +32,12 @@ SHLIB_LINK += $(ECL_LIBS)
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
+# PGDG Makefile.global overwrites with_llvm=yes; clang-N is not a runtime dep.
+override COMPILE.c.bc = true
+override COMPILE.cxx.bc = true
+install-bitcode:
+	@true
+
 override PG_CFLAGS += -Wno-declaration-after-statement
 
 .PHONY: install-lisp dist

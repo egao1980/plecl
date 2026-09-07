@@ -14,6 +14,7 @@
                   (find-symbol "INSTALL-BYTECODES-COMPILER" "EXT"))))
     (when (and sym (fboundp sym))
       (funcall sym)))
+  (pushnew :ecl-bytecmp *features*)
   t)
 
 (defun getenv* (name)
@@ -275,29 +276,36 @@
     (append (directory (merge-pathnames "*.asd" dir))
             (directory (make-pathname :defaults dir :name :wild :type "asd")))))
 
-(defun load-unpacked-system (directory &optional name)
+(defun lisp-files (directory)
+  (let ((dir (pathname-as-directory directory)))
+    (sort (remove-duplicates
+           (append (directory (merge-pathnames "*.lisp" dir))
+                   (directory (make-pathname :defaults dir :name :wild :type "lisp")))
+           :test #'equal)
+          #'string< :key #'namestring)))
+
+(defun eval-lisp-file (path)
+  (with-open-file (in path :element-type '(unsigned-byte 8))
+    (let ((buf (make-array (file-length in) :element-type '(unsigned-byte 8))))
+      (read-sequence buf in)
+      (load-source-string (utf8-to-string buf)))))
+
+(defun load-unpacked-system (directory &optional name written)
+  "Eval .lisp files. Prefer WRITTEN (pack order) so :serial asd files load
+   pkg then body. Do not asdf:load-system — compile-file SIGSEGVs the
+   backend (Homebrew ECL 26, seen in 90_blob)."
   (ensure-bytecode-compiler)
-  (let ((asds (remove-duplicates (asd-files directory) :test #'equal)))
-    (cond
-      ((and asds (ensure-asdf))
-       (let* ((asdf (find-package :asdf))
-              (central (find-symbol "*CENTRAL-REGISTRY*" asdf))
-              (load-op (find-symbol "LOAD-SYSTEM" asdf))
-              (sys (or name
-                       (pathname-name (first asds)))))
-         (pushnew (pathname-as-directory directory)
-                  (symbol-value central)
-                  :test #'equal)
-         (funcall load-op sys)
-         sys))
-      (t
-       (dolist (path (sort (directory (merge-pathnames "*.lisp" (pathname-as-directory directory)))
-                           #'string< :key #'namestring))
-         (with-open-file (in path :element-type '(unsigned-byte 8))
-           (let ((buf (make-array (file-length in) :element-type '(unsigned-byte 8))))
-             (read-sequence buf in)
-             (load-source-string (utf8-to-string buf)))))
-       (or name "lisp")))))
+  (let* ((dir (pathname-as-directory directory))
+         (asds (remove-duplicates (asd-files dir) :test #'equal))
+         (lisps (or (remove-if-not (lambda (p)
+                                     (equalp (pathname-type p) "lisp"))
+                                   written)
+                    (lisp-files dir))))
+    (dolist (path lisps)
+      (eval-lisp-file path))
+    (or name
+        (and asds (pathname-name (first asds)))
+        "lisp")))
 
 (defun record-loaded (name format dir)
   (setf (gethash name *loaded-blobs*)
@@ -319,8 +327,8 @@
       ((:system :tree :asd)
        (let ((dir (merge-pathnames (concatenate 'string (safe-relpath (string name)) "/")
                                    (blob-root))))
-         (unpack-system octets dir)
-         (let ((sys (load-unpacked-system dir name)))
+         (let* ((written (unpack-system octets dir))
+                (sys (load-unpacked-system dir name written)))
            (record-loaded (string sys) :system dir)
            (format nil "loaded:~a" sys)))))))
 
