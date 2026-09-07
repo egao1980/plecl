@@ -38,7 +38,11 @@ AS $plecl$
                 most-positive-fixnum)
                (t frame_preceding)))
        (rows (plecl:query "SELECT store, day, amount FROM demo_sales ORDER BY store, day"))
-       (get (lambda (row k) (cdr (assoc k row))))
+       (get (lambda (row k)
+              (let ((pair (assoc k row)))
+                (unless pair
+                  (error "missing ~s in ~s" k row))
+                (cdr pair))))
        (groups (make-hash-table :test 'equal))
        (order '()))
   (dolist (row rows)
@@ -75,8 +79,8 @@ AS $plecl$
                            (cons :dense_rank dense)
                            (cons :running_sum (reduce #'+ xs :end (1+ i)))
                            (cons :frame_avg (/ (reduce #'+ frame) (length frame)))
-                           (cons :lag_amount (and (plusp i) (nth (1- i) xs)))
-                           (cons :zscore (and sd (plusp sd) (/ (- x mean) sd)))
+                           (cons :lag_amount (if (plusp i) (nth (1- i) xs) plecl:+null+))
+                           (cons :zscore (if (and sd (plusp sd)) (/ (- x mean) sd) plecl:+null+))
                            (cons :share (/ x total))))))
    (nreverse order)))
 $plecl$;

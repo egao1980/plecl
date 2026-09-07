@@ -6,12 +6,61 @@ LANGUAGE plecl AS $plecl$
 $plecl$;
 
 DO $$
+DECLARE
+  msg text;
 BEGIN
-  PERFORM err_boom();
-  RAISE EXCEPTION 'should have failed';
-EXCEPTION
-  WHEN external_routine_exception THEN
-    NULL;
+  BEGIN
+    PERFORM err_boom();
+    RAISE EXCEPTION 'should have failed';
+  EXCEPTION
+    WHEN external_routine_exception THEN
+      GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+      IF position('boom' in msg) = 0 THEN
+        RAISE EXCEPTION 'err_boom SQLERRM missing boom: %', msg;
+      END IF;
+  END;
+END$$;
+
+CREATE FUNCTION err_debugger() RETURNS integer
+LANGUAGE plecl AS $plecl$
+(invoke-debugger (make-condition 'simple-error :format-control "dbg-hook"))
+$plecl$;
+
+DO $$
+DECLARE
+  msg text;
+BEGIN
+  BEGIN
+    PERFORM err_debugger();
+    RAISE EXCEPTION 'debugger hook should have failed';
+  EXCEPTION
+    WHEN external_routine_exception THEN
+      GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+      IF position('dbg-hook' in msg) = 0 THEN
+        RAISE EXCEPTION 'debugger hook SQLERRM missing dbg-hook: %', msg;
+      END IF;
+  END;
+END$$;
+
+CREATE FUNCTION err_type () RETURNS integer
+LANGUAGE plecl AS $plecl$
+(float nil 1.0d0)
+$plecl$;
+
+DO $$
+DECLARE
+  msg text;
+BEGIN
+  BEGIN
+    PERFORM err_type();
+    RAISE EXCEPTION 'type-error should have failed';
+  EXCEPTION
+    WHEN external_routine_exception THEN
+      GET STACKED DIAGNOSTICS msg = MESSAGE_TEXT;
+      IF position('REAL' in msg) = 0 AND position('real' in msg) = 0 THEN
+        RAISE EXCEPTION 'type-error SQLERRM unexpected: %', msg;
+      END IF;
+  END;
 END$$;
 
 DO $$

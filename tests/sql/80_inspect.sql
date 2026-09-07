@@ -31,3 +31,7 @@ SELECT plecl_expect(lisp.asdf_version() = '3.3.7', 'bundled ASDF 3.3.7');
 SELECT plecl_expect(
   (SELECT count(*) FROM lisp.functions WHERE package = 'PLECL' AND name = 'QUERY') = 1,
   'lisp.functions');
+
+SELECT plecl_expect(
+  (SELECT fboundp FROM lisp.symbols WHERE package = 'PLECL' AND name = '%EREPORT'),
+  '%EREPORT C hook is bound');

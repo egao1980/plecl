@@ -38,7 +38,9 @@ Datum plecl_object_to_datum(Oid typid, int32 typmod, cl_object obj, bool *isnull
 cl_object plecl_tuple_to_object(HeapTuple tuple, TupleDesc tupdesc);
 HeapTuple plecl_object_to_tuple(cl_object obj, TupleDesc tupdesc);
 
+void plecl_register_runtime(void);
 void plecl_register_spi(void);
+cl_object plecl_c_ereport(cl_object message);
 cl_object plecl_c_spi_execute(cl_object sql, cl_object args);
 cl_object plecl_c_spi_execute_rows(cl_object sql, cl_object args);
 

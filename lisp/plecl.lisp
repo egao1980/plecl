@@ -33,6 +33,7 @@
            #:load-bundled-asdf
            #:asdf-version-string
            #:boot
+           #:install-debugger-hooks
            #:*trigger*
            #:trigger-new
            #:trigger-old
@@ -46,18 +47,42 @@
 
 (in-package #:plecl)
 
-;; ECL's default debugger is a REPL. An error during LOAD (missing package,
-;; etc.) would sit at ">" and hang CREATE EXTENSION forever.
-(defun %no-debugger (condition hook)
-  (declare (ignore hook))
-  (format *error-output* "plecl: ~a~%" condition)
-  (finish-output *error-output*)
-  (throw '%abort condition))
+(defun %clear-debugger-hooks ()
+  (setq *debugger-hook* nil)
+  (let ((invoke (find-symbol "*INVOKE-DEBUGGER-HOOK*" "EXT"))
+        (break-enable (find-symbol "*BREAK-ENABLE*" "SI")))
+    (when invoke
+      (set invoke nil))
+    (when (and break-enable (boundp break-enable))
+      (set break-enable nil))))
 
-(setq *debugger-hook* #'%no-debugger)
-(let ((sym (find-symbol "*INVOKE-DEBUGGER-HOOK*" "EXT")))
-  (when sym
-    (set sym #'%no-debugger)))
+(defun %ereport-message (message)
+  "C PLECL:%EREPORT → ereport(ERROR). Never returns in the backend."
+  (let ((fn (find-symbol "%EREPORT" "PLECL")))
+    (unless (and fn (fboundp fn))
+      (error "plecl: %EREPORT is not registered"))
+    (funcall fn (if (stringp message) message (princ-to-string message)))))
+
+(defun %pg-debugger (condition hook)
+  "Unhandled Lisp condition → PostgreSQL ERROR (no ECL REPL)."
+  (declare (ignore hook))
+  (%clear-debugger-hooks)
+  (%ereport-message
+   (with-output-to-string (s)
+     (format s "plecl: ~a" condition))))
+
+(defun install-debugger-hooks ()
+  (%clear-debugger-hooks)
+  (setq *debugger-hook* #'%pg-debugger)
+  (let ((invoke (find-symbol "*INVOKE-DEBUGGER-HOOK*" "EXT"))
+        (break-enable (find-symbol "*BREAK-ENABLE*" "SI")))
+    (when invoke
+      (set invoke #'%pg-debugger))
+    (when (and break-enable (boundp break-enable))
+      (set break-enable nil)))
+  t)
+
+(install-debugger-hooks)
 
 (defconstant +null+ '+sql-null+)
 
@@ -237,6 +262,7 @@
 
 (defun boot ()
   (let ((*package* (find-package '#:plecl.user)))
+    (install-debugger-hooks)
     (when (fboundp 'ensure-bytecode-compiler)
       (ensure-bytecode-compiler))
     ;; ASDF is bundled but loaded lazily — evaluating asdf.lisp at

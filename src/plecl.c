@@ -36,6 +36,26 @@ plecl_sql_null_p(cl_object obj)
 	return obj == plecl_null_object();
 }
 
+/* Lisp debugger hook → ereport(ERROR). Never returns. */
+cl_object
+plecl_c_ereport(cl_object message)
+{
+	char	   *s;
+
+	s = plecl_cstring_palloc(message);
+	ereport(ERROR,
+			(errcode(ERRCODE_EXTERNAL_ROUTINE_EXCEPTION),
+			 errmsg("%s", (s && s[0]) ? s : "plecl error")));
+	return ECL_NIL;
+}
+
+void
+plecl_register_runtime(void)
+{
+	ecl_def_c_function(ecl_make_symbol("%EREPORT", PLECL_PACKAGE),
+					   (cl_objectfn_fixed) plecl_c_ereport, 1);
+}
+
 cl_object
 plecl_apply(const char *name, cl_object args)
 {
@@ -97,6 +117,7 @@ boot_ecl(void)
 	env = ecl_process_env();
 	ECL_CATCH_ALL_BEGIN(env)
 	{
+		plecl_register_runtime();
 		snprintf(lisp_path, sizeof(lisp_path), "%s/plecl.lisp", pkglib_path);
 		path = plecl_string(lisp_path, strlen(lisp_path));
 		cl_load(1, path);
