@@ -11,9 +11,9 @@ case "${1:-$(uname -s)}" in
       ecl \
       libgc-dev \
       libgmp-dev \
-      postgresql \
-      postgresql-server-dev-all \
-      locales
+      locales \
+      postgresql-16 \
+      postgresql-server-dev-16
     ;;
   Darwin|darwin|macOS|macos*)
     brew list ecl >/dev/null 2>&1 || brew install ecl
@@ -26,8 +26,7 @@ case "${1:-$(uname -s)}" in
     fi
     ;;
   MINGW*|MSYS*|Windows|windows*)
-    echo "Windows MinGW: msys2/setup-msys2 (mingw-w64-x86_64-ecl, mingw-w64-x86_64-postgresql)" >&2
-    echo "Windows MSVC: scripts/ci-windows-msvc.ps1 (ECL 24.5.10 + EDB zip)" >&2
+    echo "Windows: MSYS2 no longer packages ECL. Use scripts/ci-windows-msvc.ps1 (EDB + ECL 24.5.10)." >&2
     ;;
   *)
     echo "unknown os: $1" >&2

@@ -10,10 +10,9 @@ PostgreSQL **16** (same major as the artifact; rebuild for 17/18 — `PG_MODULE_
 |---|---|---|---|
 | `plecl-$V-linux-x86_64.tar.gz` | gcc | apt / PGDG / EDB Linux | `libecl` from the distro |
 | `plecl-$V-macos-arm64.tar.gz` | clang | Homebrew `postgresql@16` | `brew install ecl` |
-| `plecl-$V-windows-x86_64.zip` | MinGW64 | **MSYS2 Postgres only** | `mingw-w64-x86_64-ecl` on `PATH` |
 | `plecl-$V-windows-x86_64-msvc.zip` | VS `/MD` | **EDB / official Windows installer** | shipped `ecl.dll` + `encodings/` |
 
-Windows: two CRTs. A MinGW `plecl.dll` will not load into EDB `postgres.exe`. ECL 26+ dropped MSVC — the official-Windows build is **ECL 24.5.10**.
+MSYS2 no longer ships `mingw-w64-x86_64-ecl`. Windows CI and the release zip are MSVC / EDB. ECL 26+ dropped the MSVC port — the official-Windows build is **ECL 24.5.10**.
 
 GitHub Release: https://github.com/egao1980/plecl/releases
 
@@ -78,19 +77,6 @@ Then as a superuser (`postgres` + the password from the EDB installer):
 
 Optional: set a machine env `ECLDIR=C:\Program Files\PostgreSQL\16\lib\` (trailing slash) if you move those files.
 
-### Windows — MSYS2 MinGW (MinGW zip)
-
-MINGW64 shell. Postgres **and** ECL must be the MinGW packages.
-
-```bash
-pacman -S --needed mingw-w64-x86_64-ecl mingw-w64-x86_64-postgresql
-# unzip so lib/ and share/extension/ are visible
-cp plecl-0.1.0-windows-x86_64/lib/* "$(pg_config --pkglibdir)/"
-cp plecl-0.1.0-windows-x86_64/share/extension/* "$(pg_config --sharedir)/extension/"
-# /mingw64/bin (ecl.dll / libecl-*.dll) must be on PATH for the postgres process
-psql -c 'CREATE EXTENSION plecl'
-```
-
 ---
 
 ## From source
@@ -99,7 +85,7 @@ psql -c 'CREATE EXTENSION plecl'
 
 ```bash
 sudo apt-get install -y build-essential ecl libgc-dev libgmp-dev \
-  postgresql postgresql-server-dev-16
+  postgresql-16 postgresql-server-dev-16
 make
 sudo make install
 sudo -u postgres psql -c 'CREATE EXTENSION plecl'
@@ -123,17 +109,6 @@ psql -d postgres -c 'CREATE EXTENSION plecl'
 ```
 
 `postgresql@16` is keg-only — `pg_config` on `PATH` must match the cluster.
-
-### Windows MSYS2 MinGW64
-
-```bash
-pacman -S --needed base-devel mingw-w64-x86_64-gcc \
-  mingw-w64-x86_64-ecl mingw-w64-x86_64-postgresql
-# MINGW64 shell
-make
-make install
-psql -c 'CREATE EXTENSION plecl'
-```
 
 ### Windows MSVC (existing EDB install)
 

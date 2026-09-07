@@ -8,10 +8,10 @@ Owning repo: [`egao1980/plecl`](https://github.com/egao1980/plecl). Workflows ar
 |---|---|---|
 | `lisp` | ubuntu + macOS + windows | `test-system.yml@main` — ASDF `plecl/tests` (Rove) |
 | `extension-docker` | ubuntu | `docker build` + full SQL suite |
-| `extension` | ubuntu, macOS, windows | native PGXS / MinGW build, `scripts/run-sql-tests.sh`, pack artifact |
+| `extension` | ubuntu, macOS | native PGXS build, `scripts/run-sql-tests.sh`, pack artifact |
 | `extension-windows-msvc` | windows-latest | VS 2022 + ECL 24.5.10 + EDB 16.15 zip |
 
-Windows ships **two** ABIs. `windows-x86_64` is MSYS2 MinGW64. `windows-x86_64-msvc` is Visual Studio / EDB. See [install.md](install.md).
+Windows CI is MSVC / EDB only. MSYS2 dropped `mingw-w64-x86_64-ecl`. See [install.md](install.md).
 
 ## Release (`release.yml`)
 
@@ -19,7 +19,7 @@ Triggers: tag `v*` or `workflow_dispatch`.
 
 1. Same native matrix as `extension`, plus `extension-windows-msvc`: build, SQL suite, `scripts/pack-release.sh`.
 2. `publish-source.yml@main` → `ghcr.io/egao1980/cl-systems/plecl:$version` (client ASDF).
-3. GitHub Release with `plecl-$version-{linux-x86_64,macos-arm64,windows-x86_64,windows-x86_64-msvc}.{tar.gz,zip}`.
+3. GitHub Release with `plecl-$version-{linux-x86_64,macos-arm64,windows-x86_64-msvc}.{tar.gz,zip}`.
 
 ```bash
 git tag v0.1.0
@@ -41,7 +41,7 @@ Packager image: `ghcr.io/egao1980/cl-repository/cl-repository-packager:latest`.
 ```bash
 make && make install
 ./scripts/run-sql-tests.sh
-./scripts/pack-release.sh linux-x86_64   # or macos-arm64 / windows-x86_64 / windows-x86_64-msvc
+./scripts/pack-release.sh linux-x86_64   # or macos-arm64 / windows-x86_64-msvc
 ```
 
 `DESTDIR` install; the script flattens PGXS paths into `dist/plecl-$version-$platform/`.

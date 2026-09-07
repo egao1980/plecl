@@ -9,10 +9,6 @@ PGFILEDESC = "plecl - Common Lisp (ECL) procedural language"
 PG_CONFIG ?= pg_config
 # Ubuntu PGXS also builds LLVM bitcode; ECL headers trip -Werror there.
 with_llvm = no
-PGXS := $(shell $(PG_CONFIG) --pgxs)
-include $(PGXS)
-
-override PG_CFLAGS += -Wno-declaration-after-statement
 
 ECL_CONFIG ?= ecl-config
 ECL_CFLAGS ?= $(shell command -v $(ECL_CONFIG) >/dev/null && $(ECL_CONFIG) --cflags)
@@ -21,8 +17,14 @@ ifeq ($(ECL_CFLAGS),)
   ECL_CFLAGS :=
   ECL_LIBS := -lecl -lgc -lgmp -lm -lpthread
 endif
-override PG_CPPFLAGS += $(ECL_CFLAGS) -I$(srcdir)/src
-override SHLIB_LINK += $(ECL_LIBS)
+# Must be set before include $(PGXS) — Homebrew PGXS snapshots CPPFLAGS at include time.
+PG_CPPFLAGS += $(ECL_CFLAGS) -I$(srcdir)/src
+SHLIB_LINK += $(ECL_LIBS)
+
+PGXS := $(shell $(PG_CONFIG) --pgxs)
+include $(PGXS)
+
+override PG_CFLAGS += -Wno-declaration-after-statement
 
 .PHONY: install-lisp dist
 install: install-lisp

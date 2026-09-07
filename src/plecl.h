@@ -18,7 +18,18 @@
 #include "utils/typcache.h"
 #include "mb/pg_wchar.h"
 
+#ifdef ERROR
+#define PLECL_PG_ERROR ERROR
+#undef ERROR
+#endif
 #include <ecl/ecl.h>
+#ifdef ERROR
+#undef ERROR
+#endif
+#ifdef PLECL_PG_ERROR
+#define ERROR PLECL_PG_ERROR
+#undef PLECL_PG_ERROR
+#endif
 
 #define PLECL_PACKAGE "PLECL"
 

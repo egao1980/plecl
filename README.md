@@ -140,7 +140,7 @@ $plecl$;
 Full steps (release zip vs source, both Windows ABIs, verify, uninstall): **[docs/install.md](docs/install.md)**.
 
 ```bash
-# Ubuntu / macOS / MSYS2 MinGW — cluster pg_config on PATH
+# Ubuntu / macOS — cluster pg_config on PATH
 make && sudo make install
 psql -c 'CREATE EXTENSION plecl'
 ```
@@ -154,7 +154,7 @@ scripts\build-msvc.bat
 scripts\build-msvc.bat install
 ```
 
-EDB users: install `plecl-$V-windows-x86_64-msvc.zip` — copy `ecl.dll` to `bindir` **and** `pkglibdir`. The MinGW zip is MSYS2-only.
+EDB users: install `plecl-$V-windows-x86_64-msvc.zip` — copy `ecl.dll` to `bindir` **and** `pkglibdir`.
 
 Docker SQL suite: `docker build -f docker/Dockerfile -t plecl-test . && docker run --rm plecl-test`
 
