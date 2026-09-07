@@ -18,18 +18,18 @@
 #include "utils/typcache.h"
 #include "mb/pg_wchar.h"
 
+/* postgres.h defines ERROR as 21. ecl.h (MSVC / windows.h) redefines it as 0.
+ * push_macro keeps the PG value. Do not `#define ERROR PLECL_PG_ERROR` then
+ * `#undef PLECL_PG_ERROR` — that leaves ERROR expanding to an undeclared ident. */
+#pragma push_macro("ERROR")
 #ifdef ERROR
-#define PLECL_PG_ERROR ERROR
 #undef ERROR
 #endif
 #include <ecl/ecl.h>
 #ifdef ERROR
 #undef ERROR
 #endif
-#ifdef PLECL_PG_ERROR
-#define ERROR PLECL_PG_ERROR
-#undef PLECL_PG_ERROR
-#endif
+#pragma pop_macro("ERROR")
 
 #define PLECL_PACKAGE "PLECL"
 

@@ -17,8 +17,16 @@ ifeq ($(ECL_CFLAGS),)
   ECL_CFLAGS :=
   ECL_LIBS := -lecl -lgc -lgmp -lm -lpthread
 endif
+# Homebrew ecl-config --cflags lists gmp but not bdw-gc; ecl/config.h includes <gc/gc.h>.
+BDWGC_CFLAGS ?= $(shell pkg-config --cflags bdw-gc 2>/dev/null)
+ifeq ($(BDWGC_CFLAGS),)
+  BREW_BDWGC := $(shell command -v brew >/dev/null 2>&1 && brew --prefix bdw-gc 2>/dev/null)
+  ifneq ($(BREW_BDWGC),)
+    BDWGC_CFLAGS := -I$(BREW_BDWGC)/include
+  endif
+endif
 # Must be set before include $(PGXS) — Homebrew PGXS snapshots CPPFLAGS at include time.
-PG_CPPFLAGS += $(ECL_CFLAGS) -I$(srcdir)/src
+PG_CPPFLAGS += $(ECL_CFLAGS) $(BDWGC_CFLAGS) -I$(srcdir)/src
 SHLIB_LINK += $(ECL_LIBS)
 
 PGXS := $(shell $(PG_CONFIG) --pgxs)
