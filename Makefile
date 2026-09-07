@@ -32,11 +32,11 @@ SHLIB_LINK += $(ECL_LIBS)
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
-# PGDG Makefile.global overwrites with_llvm=yes; clang-N / llvm-lto are not
-# runtime deps. install copies .bc via $(call install_llvm_module), not a
-# separate install-bitcode target.
-override COMPILE.c.bc = touch
-override COMPILE.cxx.bc = touch
+# PGDG Makefile.global overwrites with_llvm=yes. The %.bc recipe is
+#   $(COMPILE.c.bc) -o $@ $<
+# so COMPILE.c.bc cannot be `touch` (`touch -o` is invalid).
+override COMPILE.c.bc = $(SHELL) "$(srcdir)/scripts/skip-llvm-bc.sh"
+override COMPILE.cxx.bc = $(SHELL) "$(srcdir)/scripts/skip-llvm-bc.sh"
 override define install_llvm_module
 endef
 

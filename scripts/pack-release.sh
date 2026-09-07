@@ -38,7 +38,7 @@ if [[ "$PLATFORM" == *msvc* ]]; then
   [[ -d "$PKGLIB/encodings" ]] && cp -a "$PKGLIB/encodings" "$DEST/lib/"
   cp -a "$SHARE/extension/plecl.control" "$SHARE"/extension/plecl--*.sql "$DEST/share/extension/"
 else
-  make DESTDIR="$DEST" install
+  make DESTDIR="$DEST" with_llvm=no install
 fi
 
 ST="$DIST/$NAME"
