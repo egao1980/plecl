@@ -64,3 +64,47 @@ SELECT plecl_expect(t_mkarr(3) = ARRAY[1,2,3], 'int[] out');
 CREATE FUNCTION t_texts(xs text[]) RETURNS integer
 LANGUAGE plecl STRICT AS $plecl$ (length xs) $plecl$;
 SELECT plecl_expect(t_texts(ARRAY['a','bb']) = 2, 'text[] in');
+
+CREATE FUNCTION t_mktexts() RETURNS text[]
+LANGUAGE plecl AS $plecl$ (list "x" "y") $plecl$;
+SELECT plecl_expect(t_mktexts() = ARRAY['x','y'], 'text[] out');
+
+CREATE FUNCTION t_vc(s varchar) RETURNS varchar
+LANGUAGE plecl STRICT AS $plecl$
+(concatenate 'string s "!")
+$plecl$;
+SELECT plecl_expect(t_vc('hi') = 'hi!', 'varchar');
+
+CREATE FUNCTION t_oid(o oid) RETURNS oid
+LANGUAGE plecl STRICT AS $plecl$ o $plecl$;
+SELECT plecl_expect(t_oid('pg_class'::regclass::oid) = 'pg_class'::regclass::oid, 'oid');
+
+CREATE FUNCTION t_void() RETURNS void
+LANGUAGE plecl AS $plecl$ nil $plecl$;
+SELECT plecl_expect(t_void() IS NULL, 'void is SQL NULL');
+
+-- Fallback types go through PG input/output (plpython_types numeric/date/json).
+CREATE FUNCTION t_num_echo(x numeric) RETURNS numeric
+LANGUAGE plecl STRICT AS $plecl$ x $plecl$;
+SELECT plecl_expect(t_num_echo(1.5) = 1.5, 'numeric echo');
+
+CREATE FUNCTION t_date_echo(d date) RETURNS date
+LANGUAGE plecl STRICT AS $plecl$ d $plecl$;
+SELECT plecl_expect(t_date_echo('2020-01-02') = DATE '2020-01-02', 'date echo');
+
+CREATE FUNCTION t_json_echo(j json) RETURNS json
+LANGUAGE plecl STRICT AS $plecl$ j $plecl$;
+SELECT plecl_expect(t_json_echo('{"a":1}'::json)::jsonb = '{"a":1}'::jsonb, 'json echo');
+
+CREATE TYPE t_pair AS (a integer, b text);
+CREATE FUNCTION t_pair_a(p t_pair) RETURNS integer
+LANGUAGE plecl STRICT AS $plecl$
+(cdr (assoc :a p))
+$plecl$;
+SELECT plecl_expect(t_pair_a(ROW(7, 'z')::t_pair) = 7, 'composite in');
+
+CREATE FUNCTION t_pair_mk(n integer) RETURNS t_pair
+LANGUAGE plecl STRICT AS $plecl$
+(list (cons :a n) (cons :b "z"))
+$plecl$;
+SELECT plecl_expect((t_pair_mk(9)).a = 9 AND (t_pair_mk(9)).b = 'z', 'composite out');
