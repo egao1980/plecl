@@ -6,6 +6,22 @@
     (load-blob octets "probe" "lisp")
     (ok (= 41 (symbol-value (find-symbol "*BLOB-PROBE*" :plecl.user))))))
 
+(deftest load-blob-from-string
+  (load-blob "(defparameter *blob-str* :ok)" "s" "lisp")
+  (ok (eq :ok (symbol-value (find-symbol "*BLOB-STR*" :plecl.user)))))
+
+(deftest utf8-roundtrip
+  (dolist (s '("" "ascii" "café" "αβγ" "🙂"))
+    (ok (string= s (plecl::utf8-to-string (plecl::string-to-utf8 s)))
+        (format nil "utf8 ~s" s))))
+
+(deftest detect-packed-vs-source
+  (let ((src (plecl::string-to-utf8 "(+ 1 2)"))
+        (packed (pack-system '(("a.lisp" . "(+ 1 2)")))))
+    (ok (eq :lisp (plecl::detect-blob-format src "auto")))
+    (ok (eq :system (plecl::detect-blob-format packed "auto")))
+    (ok (eq :lisp (plecl::detect-blob-format packed "lisp")))))
+
 (deftest pack-system-unpacks-files
   (let* ((packed (pack-system
                   '(("blob-demo.asd"
@@ -19,10 +35,16 @@
     (ok (probe-file (merge-pathnames "pkg.lisp" dir)))
     (ok (probe-file (merge-pathnames "cube.lisp" dir)))
     (load-blob packed "blob-demo" "system")
-    (ok (= 27 (funcall (find-symbol "CUBE" :blob-demo) 3)))))
+    (ok (= 27 (funcall (find-symbol "CUBE" :blob-demo) 3)))
+    (ok (find "blob-demo" (mapcar (lambda (r) (cdr (assoc :name r))) (catalog-loaded))
+              :test #'string=))))
 
-(deftest reject-dotdot-path
-  (ok (signals (pack-system '(("../x.lisp" . "(+ 1 2)"))) 'error)))
+(deftest reject-illegal-paths
+  (ok (signals (pack-system '(("../x.lisp" . "(+ 1 2)"))) 'error))
+  (ok (signals (pack-system '(("/etc/passwd" . "x"))) 'error)))
+
+(deftest empty-payload
+  (ok (signals (load-blob +null+ "x" "lisp") 'error)))
 
 (deftest vendor-asdf-present
   (let ((path (merge-pathnames "vendor/asdf.lisp"

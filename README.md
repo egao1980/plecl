@@ -135,11 +135,13 @@ docker build -f docker/Dockerfile -t plecl .
 docker run --rm plecl
 ```
 
-Client helpers (dollar-quote, no backend):
+Client helpers (dollar-quote, inspector, blob packer — no backend):
 
 ```bash
 ros -e '(asdf:test-system "plecl")' -q
 ```
+
+SQL suite is split like `src/pl/plpython/sql` (types / call / spi / srf / trigger / error / do / inspect / blob / window). `plecl_expect` fails the script on a wrong value. Docker runs `tests/sql/*.sql` in order.
 
 ## Signals / GC
 

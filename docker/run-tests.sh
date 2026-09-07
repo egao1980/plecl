@@ -33,6 +33,9 @@ su -s /bin/bash postgres -c "${PGBIN}/pg_ctl -D '$PGDATA' -l /tmp/pg.log -o '-k 
 trap 'su -s /bin/bash postgres -c "${PGBIN}/pg_ctl -D \"$PGDATA\" -m fast stop" || true' EXIT
 
 su -s /bin/bash postgres -c "${PGBIN}/createdb -h /tmp plecl_test"
-su -s /bin/bash postgres -c "${PGBIN}/psql -h /tmp -d plecl_test -v ON_ERROR_STOP=1 -f /src/tests/sql/plecl.sql"
-su -s /bin/bash postgres -c "${PGBIN}/psql -h /tmp -d plecl_test -v ON_ERROR_STOP=1 -f /src/examples/window-agg.sql"
+shopt -s nullglob
+for f in /src/tests/sql/*.sql; do
+  echo "== $(basename "$f") =="
+  su -s /bin/bash postgres -c "${PGBIN}/psql -h /tmp -d plecl_test -v ON_ERROR_STOP=1 -f '$f'"
+done
 echo "plecl extension tests OK"
