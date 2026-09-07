@@ -46,6 +46,19 @@
 
 (in-package #:plecl)
 
+;; ECL's default debugger is a REPL. An error during LOAD (missing package,
+;; etc.) would sit at ">" and hang CREATE EXTENSION forever.
+(defun %no-debugger (condition hook)
+  (declare (ignore hook))
+  (format *error-output* "plecl: ~a~%" condition)
+  (finish-output *error-output*)
+  (throw '%abort condition))
+
+(setq *debugger-hook* #'%no-debugger)
+(let ((sym (find-symbol "*INVOKE-DEBUGGER-HOOK*" "EXT")))
+  (when sym
+    (set sym #'%no-debugger)))
+
 (defconstant +null+ '+sql-null+)
 
 (defun sql-null-p (x)
@@ -224,8 +237,10 @@
 
 (defun boot ()
   (let ((*package* (find-package '#:plecl.user)))
-    (when (fboundp 'load-bundled-asdf)
-      (load-bundled-asdf))
+    (when (fboundp 'ensure-bytecode-compiler)
+      (ensure-bytecode-compiler))
+    ;; ASDF is bundled but loaded lazily — evaluating asdf.lisp at
+    ;; CREATE EXTENSION is ~14k forms and used to hang the backend.
     (cons :ok nil)))
 
 (defun %load-sibling (name)

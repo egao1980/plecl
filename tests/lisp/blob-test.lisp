@@ -53,3 +53,20 @@
     (ok (probe-file path))
     (ok (search "This is ASDF 3.3.7"
                 (with-open-file (in path) (read-line in) (read-line in))))))
+
+(deftest backend-lisp-no-uiop-reader
+  ;; blob.lisp is LOADed into ECL before ASDF/UIOP exists. A `uiop:` token
+  ;; at read time drops the backend into the debugger and hangs CREATE EXTENSION.
+  (let* ((root (make-pathname :name nil :type nil
+                              :defaults (asdf:system-source-file "plecl")))
+         (paths (list (merge-pathnames "lisp/blob.lisp" root)
+                      (merge-pathnames "lisp/plecl.lisp" root)
+                      (merge-pathnames "lisp/inspect.lisp" root))))
+    (dolist (path paths)
+      (ok (probe-file path) (namestring path))
+      (ok (not (search "uiop:" (with-output-to-string (out)
+                                 (with-open-file (in path)
+                                   (loop for line = (read-line in nil nil)
+                                         while line
+                                         do (write-line line out))))))
+          (format nil "~a must not contain uiop: reader forms" (file-namestring path))))))

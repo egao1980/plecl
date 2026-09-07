@@ -17,8 +17,13 @@
   t)
 
 (defun getenv* (name)
-  (or (ignore-errors (funcall (find-symbol "GETENV" "EXT") name))
-      (ignore-errors (uiop:getenv name))))
+  ;; find-symbol: blob.lisp loads before bundled ASDF, so UIOP: is unreadable.
+  (flet ((call-if (package symbol)
+           (let ((fn (and (find-package package) (find-symbol symbol package))))
+             (when (and fn (fboundp fn))
+               (ignore-errors (funcall fn name))))))
+    (or (call-if "EXT" "GETENV")
+        (call-if "UIOP" "GETENV"))))
 
 (defun blob-root ()
   (or *blob-root*
@@ -215,6 +220,7 @@
     last))
 
 (defun asdf-version-string ()
+  (ensure-asdf)
   (let* ((pkg (find-package :asdf))
          (fn (and pkg (find-symbol "ASDF-VERSION" pkg))))
     (if (and fn (fboundp fn))
